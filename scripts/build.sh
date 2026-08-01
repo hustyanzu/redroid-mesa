@@ -264,7 +264,7 @@ docker_image() {
   fi
 
   local tags=(-t "${IMAGE_NAME}:${IMAGE_TAG}" -t "${IMAGE_NAME}:${VARIANT_ID}")
-  if [[ "$VARIANT_ID" == "a13-microg-magiskdelta" ]]; then
+  if [[ "$VARIANT_ID" == "a13-mindthegapps-magisk" ]]; then
     tags+=(-t "${IMAGE_NAME}:latest")
   fi
 

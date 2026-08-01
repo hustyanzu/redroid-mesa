@@ -97,12 +97,12 @@ jobs:
             docker push "${remote}:${v}"
           done
 
-          # latest = full stack (mesa + houdini + microG + Kitsune)
-          docker tag "${NAME}:a13-microg-magiskdelta-${VER}" "${remote}:latest"
+          # latest / git tag = MindTheGapps + official Magisk
+          docker tag "${NAME}:a13-mindthegapps-magisk-${VER}" "${remote}:latest"
           docker push "${remote}:latest"
 
           if [ "$EVENT" = "push" ]; then
-            docker tag "${NAME}:a13-microg-magiskdelta-${VER}" "${remote}:${REF}"
+            docker tag "${NAME}:a13-mindthegapps-magisk-${VER}" "${remote}:${REF}"
             docker push "${remote}:${REF}"
           fi
 

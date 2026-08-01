@@ -17,10 +17,10 @@ GApps picks **one of** microG / MindTheGapps; Magisk picks **one of** Kitsune / 
 | `a13-mindthegapps` | MindTheGapps | — |
 | `a13-magiskdelta` | — | Kitsune (Magisk Delta / MagiskHide) |
 | `a13-magisk` | — | Official Magisk (Zygisk; install Shamiko yourself) |
-| `a13-microg-magiskdelta` / `latest` | MinMicroG | Kitsune |
+| `a13-microg-magiskdelta` | MinMicroG | Kitsune |
 | `a13-microg-magisk` | MinMicroG | Official Magisk |
 | `a13-mindthegapps-magiskdelta` | MindTheGapps | Kitsune |
-| `a13-mindthegapps-magisk` | MindTheGapps | Official Magisk |
+| `a13-mindthegapps-magisk` / `latest` | MindTheGapps | Official Magisk |
 
 Kitsune manager: `io.github.huskydg.magisk`. Official: `com.topjohnwu.magisk`.
 Optional boot prop to skip GApps setup wizard: `ro.setupwizard.mode=DISABLED`.
