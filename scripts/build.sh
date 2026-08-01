@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Build redroid-mesa image: fetch → Mesa → stage vendor → docker image.
 # Usage:
-#   ./scripts/build.sh              # full build (a13)
-#   SKIP_DEPS=1 ./scripts/build.sh  # deps already installed (CI)
-#   SKIP_MESA_BUILD=1 ./scripts/build.sh  # reuse out/android-x86_64
+#   ./scripts/build.sh                 # pure a13
+#   ./scripts/build.sh a13-microg
+#   ./scripts/build.sh --all           # all variants (Mesa once)
+#   SKIP_MESA_BUILD=1 ./scripts/build.sh --all
+# Host packages: install yourself (see README). CI uses scripts/ci/install-packages.sh.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -26,6 +28,8 @@ load_variant() {
   local id="${1:?}"
   local f="$ROOT/variants/${id}/variant.env"
   [[ -f "$f" ]] || die "missing $f"
+  # Prevent bleed from a previous variant when building --all
+  unset VARIANT_ID BASE_IMAGE MESA_TAG ANDROID_API IMAGE_NAME IMAGE_TAG FEATURES MESA_VERSION
   set -a
   # shellcheck disable=SC1090
   source "$f"
@@ -37,6 +41,7 @@ load_variant() {
   IMAGE_NAME="${IMAGE_NAME:-redroid-mesa}"
   MESA_VERSION="${MESA_TAG#mesa-}"
   IMAGE_TAG="${IMAGE_TAG:-${VARIANT_ID}-${MESA_VERSION}}"
+  FEATURES="${FEATURES:-}"
 }
 
 fetch_sources() {
@@ -238,38 +243,83 @@ PY
 
 docker_image() {
   local ctx="$ROOT/out/docker-context/${VARIANT_ID}"
+  local features="${FEATURES:-}"
+  local f
   rm -rf "$ctx"
-  mkdir -p "$ctx"
-  cp -a "$ROOT/out/vendor-mesa/vendor" "$ctx/vendor"
+  mkdir -p "$ctx/root"
+  cp -a "$ROOT/out/vendor-mesa/vendor" "$ctx/root/vendor"
   cp "$ROOT/docker/Dockerfile" "$ctx/Dockerfile"
   cp "$ROOT/docker/.dockerignore" "$ctx/.dockerignore"
+
+  if [[ -n "$features" ]]; then
+    log "stage extras ($features)"
+    python3 "$ROOT/scripts/stage_extras.py" --features "$features"
+    IFS=',' read -r -a feat_arr <<< "$features"
+    for f in "${feat_arr[@]}"; do
+      f="$(echo "$f" | tr -d '[:space:]')"
+      [[ -n "$f" ]] || continue
+      [[ -d "$ROOT/out/extras/$f" ]] || die "missing out/extras/$f"
+      cp -a "$ROOT/out/extras/$f"/. "$ctx/root/"
+    done
+  fi
+
+  local tags=(-t "${IMAGE_NAME}:${IMAGE_TAG}" -t "${IMAGE_NAME}:${VARIANT_ID}")
+  if [[ "$VARIANT_ID" == "a13-microg-magiskdelta" ]]; then
+    tags+=(-t "${IMAGE_NAME}:latest")
+  fi
 
   docker_cmd build \
     --build-arg "BASE_IMAGE=${BASE_IMAGE}" \
     --label "org.opencontainers.image.title=redroid-mesa" \
-    --label "org.opencontainers.image.description=Redroid A13 + Mesa ${MESA_VERSION}" \
+    --label "org.opencontainers.image.description=Redroid A13 + Mesa ${MESA_VERSION} (${VARIANT_ID})" \
     --label "org.opencontainers.image.source=${IMAGE_SOURCE:-https://github.com/${GITHUB_REPOSITORY:-}}" \
     --label "org.opencontainers.image.version=${IMAGE_TAG}" \
     --label "org.opencontainers.image.revision=$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo unknown)" \
     --label "io.redroid.mesa.variant=${VARIANT_ID}" \
     --label "io.redroid.mesa.version=${MESA_VERSION}" \
+    --label "io.redroid.mesa.features=${features}" \
     --label "io.redroid.base.image=${BASE_IMAGE}" \
-    -t "${IMAGE_NAME}:${IMAGE_TAG}" \
-    -t "${IMAGE_NAME}:${VARIANT_ID}" \
-    -t "${IMAGE_NAME}:latest" \
+    "${tags[@]}" \
     "$ctx"
 
-  echo "Local tags: ${IMAGE_NAME}:{${IMAGE_TAG},${VARIANT_ID},latest}"
+  echo "Local tags: ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:${VARIANT_ID}"
+}
+
+build_one() {
+  local id="$1"
+  load_variant "$id"
+  log "stage vendor ($VARIANT_ID)"
+  stage_vendor
+  log "docker image ($VARIANT_ID)"
+  docker_image
 }
 
 # --- main ---
+ALL_VARIANTS=(a13 a13-houdini a13-microg a13-magiskdelta a13-microg-magiskdelta)
+
+if [[ "${1:-}" == "--all" ]]; then
+  if [[ "${SKIP_MESA_BUILD:-0}" == "1" ]]; then
+    log "reuse existing out/android-x86_64"
+    [[ -f "$ROOT/out/android-x86_64/lib/libgallium_dri.so" ]] || die "no Mesa build present"
+  else
+    # Mesa is shared — load any variant for MESA_TAG / ANDROID_API
+    load_variant a13
+    log "fetch"
+    fetch_sources
+    log "mesa_clc"
+    build_mesa_clc
+    log "android mesa"
+    build_android_mesa
+  fi
+  for id in "${ALL_VARIANTS[@]}"; do
+    build_one "$id"
+  done
+  log "DONE (all variants)"
+  exit 0
+fi
+
 VARIANT_ID="${1:-a13}"
 load_variant "$VARIANT_ID"
-
-if [[ "${SKIP_DEPS:-0}" != "1" ]] && [[ "${SKIP_MESA_BUILD:-0}" != "1" ]]; then
-  log "deps"
-  sudo bash "$ROOT/scripts/install-deps.sh"
-fi
 
 if [[ "${SKIP_MESA_BUILD:-0}" == "1" ]]; then
   log "reuse existing out/android-x86_64"
@@ -283,8 +333,5 @@ else
   build_android_mesa
 fi
 
-log "stage vendor"
-stage_vendor
-log "docker image"
-docker_image
+build_one "$VARIANT_ID"
 log "DONE"

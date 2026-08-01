@@ -1,10 +1,12 @@
 name: Publish to GHCR
 
+# CI runs in Fedora so package names match the primary build host.
+# Users install deps themselves (README); this job uses scripts/ci/install-packages.sh only.
+
 on:
   push:
     tags:
       - "v*"
-      - "a13*"
   workflow_dispatch:
 
 permissions:
@@ -13,35 +15,37 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  VARIANT: a13
 
 jobs:
   build-and-push:
     runs-on: ubuntu-24.04
-    timeout-minutes: 180
+    container:
+      image: fedora:41
+      options: --privileged
+    timeout-minutes: 240
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install build deps
-        run: sudo bash scripts/install-deps.sh
+      - name: Install Fedora build packages
+        run: bash scripts/ci/install-packages.sh
 
-      - name: Cache NDK + Mesa sources
+      - name: Cache NDK + Mesa + downloads
         uses: actions/cache@v4
         with:
           path: |
             third_party/ndk
             third_party/mesa
-          key: tp-${{ runner.os }}-${{ hashFiles('variants/a13/variant.env', 'patches/**', 'scripts/**') }}
+            third_party/downloads
+          key: tp-fedora-${{ hashFiles('variants/**/variant.env', 'patches/**', 'scripts/**') }}
 
-      - name: Build Mesa + local image
+      - name: Build Mesa + all variant images
         env:
-          SKIP_DEPS: "1"
           GITHUB_REPOSITORY: ${{ github.repository }}
           IMAGE_SOURCE: https://github.com/${{ github.repository }}
         run: |
-          chmod +x scripts/*.sh
-          ./scripts/build.sh
+          chmod +x scripts/*.sh scripts/ci/*.sh
+          ./scripts/build.sh --all
 
       - name: Load metadata
         id: meta
@@ -53,7 +57,6 @@ jobs:
           ver="${MESA_TAG#mesa-}"
           echo "mesa_version=$ver" >> "$GITHUB_OUTPUT"
           echo "image_name=${IMAGE_NAME:-redroid-mesa}" >> "$GITHUB_OUTPUT"
-          echo "local_tag=a13-${ver}" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -62,29 +65,34 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Tag and push
+      - name: Tag and push all variants
         env:
           OWNER: ${{ github.repository_owner }}
           NAME: ${{ steps.meta.outputs.image_name }}
-          MESA: ${{ steps.meta.outputs.mesa_version }}
-          LOCAL: ${{ steps.meta.outputs.local_tag }}
+          VER: ${{ steps.meta.outputs.mesa_version }}
           REF: ${{ github.ref_name }}
           EVENT: ${{ github.event_name }}
         run: |
           set -euo pipefail
           owner_lc="$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')"
           remote="${REGISTRY}/${owner_lc}/${NAME}"
+          variants=(a13 a13-houdini a13-microg a13-magiskdelta a13-microg-magiskdelta)
 
-          docker tag "${NAME}:${LOCAL}" "${remote}:${LOCAL}"
-          docker tag "${NAME}:${LOCAL}" "${remote}:a13"
-          docker tag "${NAME}:${LOCAL}" "${remote}:latest"
-          docker push "${remote}:${LOCAL}"
-          docker push "${remote}:a13"
+          for v in "${variants[@]}"; do
+            local_tag="${v}-${VER}"
+            docker tag "${NAME}:${local_tag}" "${remote}:${local_tag}"
+            docker tag "${NAME}:${local_tag}" "${remote}:${v}"
+            docker push "${remote}:${local_tag}"
+            docker push "${remote}:${v}"
+          done
+
+          # latest = full stack (mesa + houdini + microG + Kitsune)
+          docker tag "${NAME}:a13-microg-magiskdelta-${VER}" "${remote}:latest"
           docker push "${remote}:latest"
 
           if [ "$EVENT" = "push" ]; then
-            docker tag "${NAME}:${LOCAL}" "${remote}:${REF}"
+            docker tag "${NAME}:a13-microg-magiskdelta-${VER}" "${remote}:${REF}"
             docker push "${remote}:${REF}"
           fi
 
-          echo "Pushed ${remote}:{${LOCAL},a13,latest}"
+          echo "Pushed ${remote} variants: ${variants[*]} (+ latest)"
