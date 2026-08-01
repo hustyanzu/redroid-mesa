@@ -20,7 +20,7 @@ esac
 
 dnf install -y \
   meson ninja-build cmake git curl unzip patchelf \
-  python3 python3-mako python3-setuptools flex bison \
+  python3 python3-mako python3-pyyaml python3-setuptools flex bison \
   clang clang-devel llvm llvm-devel \
   libclc libclc-devel libclc-spirv \
   glslang \

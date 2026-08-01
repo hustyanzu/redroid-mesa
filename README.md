@@ -80,7 +80,7 @@ Install build tools yourself (`build.sh` will not call `dnf`/`apt`).
 ```bash
 sudo dnf install -y \
   meson ninja-build cmake git curl unzip patchelf \
-  python3 python3-mako python3-setuptools flex bison \
+  python3 python3-mako python3-pyyaml python3-setuptools flex bison \
   clang clang-devel llvm llvm-devel \
   libclc libclc-devel libclc-spirv \
   glslang \
@@ -97,7 +97,7 @@ sudo dnf install -y \
 sudo apt-get update
 sudo apt-get install -y --no-install-recommends \
   meson ninja-build cmake git curl unzip patchelf \
-  python3-mako python3-setuptools flex bison \
+  python3-mako python3-yaml python3-setuptools flex bison \
   clang-18 llvm-18-dev libclang-18-dev \
   libclc-18 libclc-18-dev \
   glslang-tools \
@@ -114,7 +114,7 @@ sudo apt-get install -y --no-install-recommends \
 sudo apt-get update
 sudo apt-get install -y --no-install-recommends \
   meson ninja-build cmake git curl unzip patchelf \
-  python3-mako python3-setuptools flex bison \
+  python3-mako python3-yaml python3-setuptools flex bison \
   clang-15 llvm-15-dev libclang-15-dev \
   libclc-15 libclc-15-dev \
   glslang-tools \
