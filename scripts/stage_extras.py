@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Stage system overlays: houdini / microg / magiskdelta → out/extras/<name>/
+"""Stage system overlays → out/extras/<name>/
 
+Features: houdini, microg, mindthegapps, magiskdelta (Kitsune), magisk (official).
 Downloads are cached under third_party/downloads/.
-Houdini/microG follow ayasa520/redroid-script + casualsnek/waydroid_script.
-Magisk is real Kitsune Mask (Jordan231111/KitsuneMagisk), not official Magisk.
 """
 from __future__ import annotations
 
@@ -31,18 +30,32 @@ HOUDINI_HACK_URL = (
     "a2194c5e294cbbfdfe87e51eb9eddb4c3621d8c3.zip"
 )
 HOUDINI_HACK_MD5 = "8f71a58f3e54eca879a2f7de64dbed58"
-# Real Kitsune Mask (Magisk Delta lineage, MagiskHide). Not ayasa520/official Magisk.
-# Package: io.github.huskydg.magisk — binaries are libmagisk64.so (not libmagisk.so).
-MAGISK_URL = (
+
+# Kitsune Mask (Magisk Delta lineage, MagiskHide). Package: io.github.huskydg.magisk
+KITSUNE_URL = (
     "https://github.com/Jordan231111/KitsuneMagisk/releases/download/"
     "v31.0-25fa2159/app-release.apk"
 )
-MAGISK_MD5 = "f3c819e276274f242f0e22921a73e2e7"
+KITSUNE_MD5 = "f3c819e276274f242f0e22921a73e2e7"
+
+# Official Magisk (Zygisk / DenyList; install Shamiko yourself). Package: com.topjohnwu.magisk
+MAGISK_OFFICIAL_URL = (
+    "https://github.com/topjohnwu/Magisk/releases/download/v30.7/Magisk-v30.7.apk"
+)
+MAGISK_OFFICIAL_MD5 = "0c937d8957520a1a3585e4363a8ccab4"
+
 MICROG_URL = (
     "https://github.com/ayasa520/MinMicroG/releases/download/latest/"
     "MinMicroG-Standard-2.11.1-20230429100529.zip"
 )
 MICROG_MD5 = "0fe332a9caa3fbb294f2e2b50f720c6b"
+
+MINDTHEGAPPS_URL = (
+    "https://github.com/MindTheGapps/13.0.0-x86_64/releases/download/"
+    "MindTheGapps-13.0.0-x86_64-20231025_201203/"
+    "MindTheGapps-13.0.0-x86_64-20231025_201203.zip"
+)
+MINDTHEGAPPS_MD5 = "8e08d656acfbb86bbc7b5f9608468ba7"
 
 ANDROID_VER = "13.0.0"
 SDK = 33
@@ -71,9 +84,19 @@ on property:sys.boot_completed=1
     exec -- /system/bin/sh -c "echo ':arm64_dyn:M::\\x7f\\x45\\x4c\\x46\\x02\\x01\\x01\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x03\\x00\\xb7::/system/bin/houdini64:P' >> /proc/sys/fs/binfmt_misc/register"
 """
 
-# Own init file — never overwrite stock bootanim.rc / hw/init.rc.
-# Kitsune ships magisk64; setup-sbin then provides /sbin/magisk.
-MAGISK_RC = """
+MICROG_RC = """
+on property:sys.boot_completed=1
+    start microg_service
+
+service microg_service /system/bin/sh /system/bin/npem
+    user root
+    group root
+    oneshot
+"""
+
+
+# Kitsune still exposes --auto-selinux --setup-sbin (official Magisk removed both).
+MAGISK_RC_KITSUNE = """
 on post-fs-data
     start logd
     exec u:r:su:s0 root root -- /system/etc/init/magisk/magiskpolicy --live --magisk
@@ -97,16 +120,81 @@ on property:init.svc.zygote=stopped
     exec u:r:su:s0 root root -- /sbin/magisk --auto-selinux --zygote-restart
 """
 
-MICROG_RC = """
-on property:sys.boot_completed=1
-    start microg_service
+# Official Magisk: shell setup-sbin (no --auto-selinux / --setup-sbin in the binary).
+# --post-fs-data does not exit; it signals via /dev/.magisk_unblock (stock Magisk pattern).
+MAGISK_RC_OFFICIAL = """
+on post-fs-data
+    start logd
+    exec u:r:su:s0 root root -- /system/etc/init/magisk/magiskpolicy --live --magisk
+    exec u:r:magisk:s0 root root -- /system/etc/init/magisk/magiskpolicy --live --magisk
+    exec u:r:update_engine:s0 root root -- /system/etc/init/magisk/magiskpolicy --live --magisk
+    exec u:r:su:s0 root root -- /system/bin/sh /system/etc/init/magisk/setup-sbin.sh
+    mkdir /sbin/.magisk 700
+    mkdir /sbin/.magisk/mirror 700
+    mkdir /sbin/.magisk/block 700
+    mkdir /sbin/.magisk/device 700
+    mkdir /sbin/.magisk/worker 700
+    touch /sbin/.magisk/config
+    rm /dev/.magisk_unblock
+    start magisk_pfsd
+    wait /dev/.magisk_unblock 40
+    rm /dev/.magisk_unblock
 
-service microg_service /system/bin/sh /system/bin/npem
+service magisk_pfsd /sbin/magisk --post-fs-data
     user root
-    group root
+    seclabel u:r:su:s0
     oneshot
+
+service magisk_svc /sbin/magisk --service
+    class late_start
+    user root
+    seclabel u:r:su:s0
+    oneshot
+
+on nonencrypted
+    start magisk_svc
+on property:vold.decrypt=trigger_restart_framework
+    start magisk_svc
+on property:sys.boot_completed=1
+    mkdir /data/adb/magisk 755
+    exec u:r:su:s0 root root -- /sbin/magisk --boot-complete
+    exec -- /system/bin/sh -c "if [ ! -e /data/data/com.topjohnwu.magisk ] ; then pm install /system/etc/init/magisk/magisk.apk ; fi"
+
+on property:init.svc.zygote=restarting
+    exec u:r:su:s0 root root -- /sbin/magisk --zygote-restart
+
+on property:init.svc.zygote=stopped
+    exec u:r:su:s0 root root -- /sbin/magisk --zygote-restart
 """
 
+SETUP_SBIN_SH = r"""#!/system/bin/sh
+# Mimic Magisk --setup-sbin for official builds (flag removed upstream).
+# Do NOT run magisk --daemon here: it does not return and blocks init `exec`.
+MAGISKDIR=/system/etc/init/magisk
+MAGISKTMP=/sbin
+mkdir -p "$MAGISKTMP"
+mount -t tmpfs -o mode=0755 tmpfs "$MAGISKTMP" 2>/dev/null || true
+for f in magisk magisk64 magiskpolicy busybox magiskboot magiskinit init-ld stub.apk; do
+  if [ -f "$MAGISKDIR/$f" ]; then
+    cp -f "$MAGISKDIR/$f" "$MAGISKTMP/$f"
+    chmod 755 "$MAGISKTMP/$f" 2>/dev/null || chmod 644 "$MAGISKTMP/$f"
+  fi
+done
+# Prefer unified magisk name for applets.
+if [ -f "$MAGISKTMP/magisk64" ] && [ ! -f "$MAGISKTMP/magisk" ]; then
+  cp -f "$MAGISKTMP/magisk64" "$MAGISKTMP/magisk"
+  chmod 755 "$MAGISKTMP/magisk"
+fi
+if [ -f "$MAGISKTMP/magisk" ] && [ ! -f "$MAGISKTMP/magisk64" ]; then
+  cp -f "$MAGISKTMP/magisk" "$MAGISKTMP/magisk64"
+  chmod 755 "$MAGISKTMP/magisk64"
+fi
+ln -sf magisk "$MAGISKTMP/su"
+ln -sf magisk "$MAGISKTMP/resetprop"
+ln -sf magiskpolicy "$MAGISKTMP/supolicy"
+mkdir -p /data/adb/magisk
+cp -f "$MAGISKDIR"/* /data/adb/magisk/ 2>/dev/null || true
+"""
 
 def md5_file(path: Path) -> str:
     h = hashlib.md5()
@@ -179,7 +267,6 @@ def stage_houdini(out: Path) -> None:
             raise SystemExit("houdini prebuilts not found")
         merge_tree(roots[0], out / "system")
 
-    # Only take ld_config*.patch from the hack — never replace hw/init.rc.
     hz = ensure_download(HOUDINI_HACK_URL, DL / "libhoudini_hack.zip", HOUDINI_HACK_MD5)
     with tempfile.TemporaryDirectory(prefix="houdini-hack-") as td:
         td_path = Path(td)
@@ -199,27 +286,35 @@ def stage_houdini(out: Path) -> None:
     rc.parent.mkdir(parents=True, exist_ok=True)
     rc.write_text(HOUDINI_RC.lstrip("\n"))
     os.chmod(rc, 0o644)
-    # Ensure we did not stage a replacement init.rc
     bad = out / "system/etc/init/hw/init.rc"
     if bad.exists():
         bad.unlink()
     print(f"staged houdini → {out}")
 
 
-def stage_magiskdelta(out: Path) -> None:
+def stage_magisk_apk(
+    out: Path,
+    *,
+    url: str,
+    md5: str,
+    cache_name: str,
+    label: str,
+    official: bool,
+) -> None:
+    """Extract Magisk/Kitsune APK libs + write magisk.rc for the given build."""
     if out.exists():
         shutil.rmtree(out)
     magisk_dir = out / "system/etc/init/magisk"
     magisk_dir.mkdir(parents=True)
     (out / "sbin").mkdir(parents=True, exist_ok=True)
 
-    apk = ensure_download(MAGISK_URL, DL / "magisk.apk", MAGISK_MD5)
+    apk = ensure_download(url, DL / cache_name, md5)
     with tempfile.TemporaryDirectory(prefix="magisk-") as td:
         td_path = Path(td)
         unzip_to(apk, td_path / "apk")
         lib_dir = td_path / "apk" / "lib" / "x86_64"
         if not lib_dir.is_dir():
-            raise SystemExit("magisk x86_64 libs missing")
+            raise SystemExit(f"{label}: magisk x86_64 libs missing")
         for so in lib_dir.glob("lib*.so"):
             m = re.search(r"lib(.*)\.so", so.name)
             if not m:
@@ -227,21 +322,53 @@ def stage_magiskdelta(out: Path) -> None:
             dest = magisk_dir / m.group(1)
             shutil.copyfile(so, dest)
             os.chmod(dest, 0o755)
-        # Kitsune: magisk64 only; keep a magisk alias for tooling that expects it.
         magisk64 = magisk_dir / "magisk64"
         magisk = magisk_dir / "magisk"
         if magisk64.is_file() and not magisk.is_file():
             shutil.copyfile(magisk64, magisk)
             os.chmod(magisk, 0o755)
+        if magisk.is_file() and not magisk64.is_file():
+            shutil.copyfile(magisk, magisk64)
+            os.chmod(magisk64, 0o755)
         if not magisk64.is_file() and not magisk.is_file():
-            raise SystemExit("magisk/magisk64 binary missing after extract")
-    shutil.copyfile(apk, magisk_dir / "magisk.apk")
+            raise SystemExit(f"{label}: magisk/magisk64 binary missing after extract")
+        stub = td_path / "apk" / "assets" / "stub.apk"
+        if stub.is_file():
+            shutil.copyfile(stub, magisk_dir / "stub.apk")
 
-    # Dedicated magisk.rc — do not touch stock bootanim.rc
+    shutil.copyfile(apk, magisk_dir / "magisk.apk")
     rc = out / "system/etc/init/magisk.rc"
-    rc.write_text(MAGISK_RC.lstrip("\n"))
+    if official:
+        setup = magisk_dir / "setup-sbin.sh"
+        setup.write_text(SETUP_SBIN_SH.lstrip("\n"))
+        os.chmod(setup, 0o755)
+        rc.write_text(MAGISK_RC_OFFICIAL.lstrip("\n"))
+    else:
+        rc.write_text(MAGISK_RC_KITSUNE.lstrip("\n"))
     os.chmod(rc, 0o644)
-    print(f"staged magiskdelta → {out}")
+    print(f"staged {label} → {out} (official={official})")
+
+
+def stage_magiskdelta(out: Path) -> None:
+    stage_magisk_apk(
+        out,
+        url=KITSUNE_URL,
+        md5=KITSUNE_MD5,
+        cache_name="kitsune-magisk.apk",
+        label="magiskdelta",
+        official=False,
+    )
+
+
+def stage_magisk(out: Path) -> None:
+    stage_magisk_apk(
+        out,
+        url=MAGISK_OFFICIAL_URL,
+        md5=MAGISK_OFFICIAL_MD5,
+        cache_name="magisk-official.apk",
+        label="magisk",
+        official=True,
+    )
 
 
 def extract_apk_native_libs(apk_path: Path, out_lib_parent: Path) -> None:
@@ -272,7 +399,6 @@ def stage_microg(out: Path) -> None:
         unzip_to(z, td_path / "u")
         src_system = td_path / "u" / "system"
         if not src_system.is_dir():
-            # some zips nest an extra directory
             found = list((td_path / "u").glob("*/system"))
             if not found:
                 raise SystemExit("MinMicroG system/ missing")
@@ -304,7 +430,6 @@ def stage_microg(out: Path) -> None:
                 if not flag:
                     rel = src_file.relative_to(src_system)
                 else:
-                    # unwrap -arch-sdk- directory
                     rel = (root_p.parent / file).relative_to(src_system)
                 dst_file = out / "system" / rel
                 dst_file.parent.mkdir(parents=True, exist_ok=True)
@@ -322,12 +447,44 @@ def stage_microg(out: Path) -> None:
     print(f"staged microg → {out}")
 
 
+def stage_mindthegapps(out: Path) -> None:
+    if out.exists():
+        shutil.rmtree(out)
+    out.mkdir(parents=True)
+
+    z = ensure_download(MINDTHEGAPPS_URL, DL / "MindTheGapps-13.0.0-x86_64.zip", MINDTHEGAPPS_MD5)
+    with tempfile.TemporaryDirectory(prefix="mtg-") as td:
+        td_path = Path(td)
+        unzip_to(z, td_path / "u")
+        # Zip layout: system/ at root, or nested under one directory.
+        src_system = td_path / "u" / "system"
+        if not src_system.is_dir():
+            found = list((td_path / "u").glob("*/system"))
+            if not found:
+                raise SystemExit("MindTheGapps system/ missing")
+            src_system = found[0]
+            base = src_system.parent
+        else:
+            base = td_path / "u"
+
+        merge_tree(src_system, out / "system")
+        # Some builds also ship product/ alongside system/
+        src_product = base / "product"
+        if src_product.is_dir():
+            merge_tree(src_product, out / "system" / "product")
+
+    print(f"staged mindthegapps → {out}")
+
+
+FEATURE_CHOICES = ["houdini", "microg", "mindthegapps", "magiskdelta", "magisk"]
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
         "features",
         nargs="*",
-        choices=["houdini", "microg", "magiskdelta"],
+        choices=FEATURE_CHOICES,
         help="features to stage",
     )
     p.add_argument("--features", dest="features_csv", default="")
@@ -344,10 +501,16 @@ def main() -> int:
     if not ordered:
         print("no features requested")
         return 0
+    if "microg" in seen and "mindthegapps" in seen:
+        raise SystemExit("microg and mindthegapps are mutually exclusive")
+    if "magisk" in seen and "magiskdelta" in seen:
+        raise SystemExit("magisk and magiskdelta are mutually exclusive")
     handlers = {
         "houdini": stage_houdini,
         "microg": stage_microg,
+        "mindthegapps": stage_mindthegapps,
         "magiskdelta": stage_magiskdelta,
+        "magisk": stage_magisk,
     }
     for f in ordered:
         handlers[f](EXTRAS / f)

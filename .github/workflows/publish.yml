@@ -76,7 +76,18 @@ jobs:
           set -euo pipefail
           owner_lc="$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')"
           remote="${REGISTRY}/${owner_lc}/${NAME}"
-          variants=(a13 a13-houdini a13-microg a13-magiskdelta a13-microg-magiskdelta)
+          variants=(
+            a13
+            a13-houdini
+            a13-microg
+            a13-mindthegapps
+            a13-magiskdelta
+            a13-magisk
+            a13-microg-magiskdelta
+            a13-microg-magisk
+            a13-mindthegapps-magiskdelta
+            a13-mindthegapps-magisk
+          )
 
           for v in "${variants[@]}"; do
             local_tag="${v}-${VER}"

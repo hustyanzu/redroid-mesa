@@ -295,7 +295,18 @@ build_one() {
 }
 
 # --- main ---
-ALL_VARIANTS=(a13 a13-houdini a13-microg a13-magiskdelta a13-microg-magiskdelta)
+ALL_VARIANTS=(
+  a13
+  a13-houdini
+  a13-microg
+  a13-mindthegapps
+  a13-magiskdelta
+  a13-magisk
+  a13-microg-magiskdelta
+  a13-microg-magisk
+  a13-mindthegapps-magiskdelta
+  a13-mindthegapps-magisk
+)
 
 if [[ "${1:-}" == "--all" ]]; then
   if [[ "${SKIP_MESA_BUILD:-0}" == "1" ]]; then
