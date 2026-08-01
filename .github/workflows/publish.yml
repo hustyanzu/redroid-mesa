@@ -1,6 +1,6 @@
 name: Publish to GHCR
 
-# CI runs in Fedora so package names match the primary build host.
+# CI runs in Fedora 44 so packages match the primary build host.
 # Users install deps themselves (README); this job uses scripts/ci/install-packages.sh only.
 
 on:
@@ -20,7 +20,7 @@ jobs:
   build-and-push:
     runs-on: ubuntu-24.04
     container:
-      image: fedora:41
+      image: fedora:44
       options: --privileged
     timeout-minutes: 240
     steps:
