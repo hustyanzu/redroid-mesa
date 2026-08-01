@@ -1,0 +1,31 @@
+# Build / fetch caches
+/out/
+/third_party/
+
+# Runtime Android /data volumes (never commit)
+/data/
+/compose/data/
+
+# Local env / secrets
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
+*.tmp
+
+# Compiled leftovers
+*.o
+*.a
+*.so
+*.so.*
+!patches/**
+
+# Logs
+*.log

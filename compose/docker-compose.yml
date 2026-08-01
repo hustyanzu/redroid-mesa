@@ -1,0 +1,47 @@
+# Runtime compose — does not build; pulls/uses IMAGE.
+# Example:
+#   export IMAGE=ghcr.io/<owner>/redroid-mesa:a13-26.1.5
+#   docker compose -f compose/docker-compose.yml up -d
+name: redroid-mesa
+
+services:
+  redroid:
+    image: ${IMAGE:-redroid-mesa:a13}
+    container_name: redroid-mesa
+    restart: unless-stopped
+    privileged: true
+    stdin_open: true
+    tty: true
+    ports:
+      - "${ADB_PORT:-5555}:5555"
+    volumes:
+      - ${DATA_DIR:-../data}:/data
+      - /dev/binderfs:/dev/binderfs
+      - /sys/kernel/debug:/sys/kernel/debug
+    devices:
+      - /dev/dri:/dev/dri
+    command:
+      - androidboot.redroid_width=${WIDTH:-720}
+      - androidboot.redroid_height=${HEIGHT:-1280}
+      - androidboot.redroid_dpi=${DPI:-320}
+      - androidboot.redroid_fps=${FPS:-60}
+      - androidboot.redroid_gpu_mode=host
+      - androidboot.redroid_gpu_node=${GPU_NODE:-/dev/dri/renderD128}
+      - androidboot.use_memfd=1
+
+  scrcpy-web:
+    image: shmayro/scrcpy-web:latest
+    container_name: redroid-scrcpy-web
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-8000}:8000"
+    depends_on:
+      - redroid
+    command:
+      - sh
+      - -c
+      - |
+        adb connect redroid:5555
+        sleep 2
+        adb devices
+        npm start
