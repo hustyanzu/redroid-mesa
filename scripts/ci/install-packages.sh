@@ -30,3 +30,12 @@ dnf install -y \
   libxml2-devel zlib-devel expat-devel \
   pkgconf-pkg-config \
   podman podman-docker
+
+# podman-docker: no TTY in Actions → short-name prompts fail hard.
+# Prefer fully-qualified names in Dockerfiles; also allow docker.io unqualified.
+mkdir -p /etc/containers/registries.conf.d
+cat >/etc/containers/registries.conf.d/999-unqualified-docker.io.conf <<'EOF'
+unqualified-search-registries = ["docker.io"]
+short-name-mode = "permissive"
+EOF
+touch /etc/containers/nodocker
