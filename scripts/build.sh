@@ -2,7 +2,7 @@
 # Build redroid-mesa image: fetch → Mesa → stage vendor → docker image.
 # Usage:
 #   ./scripts/build.sh                 # pure a13
-#   ./scripts/build.sh a13-microg
+#   ./scripts/build.sh a13-supersu
 #   ./scripts/build.sh --mesa-only     # fetch + compile Mesa (no docker image)
 #   ./scripts/build.sh --all           # all variants (Mesa once)
 #   SKIP_MESA_BUILD=1 ./scripts/build.sh --all
@@ -306,7 +306,7 @@ docker_image() {
   fi
 
   local tags=(-t "${IMAGE_NAME}:${IMAGE_TAG}" -t "${IMAGE_NAME}:${VARIANT_ID}")
-  if [[ "$VARIANT_ID" == "a13-mindthegapps-magisk" ]]; then
+  if [[ "$VARIANT_ID" == "a13" ]]; then
     tags+=(-t "${IMAGE_NAME}:latest")
   fi
 
@@ -338,16 +338,14 @@ build_one() {
 }
 
 # --- main ---
-# All local variants. GHCR publishes only a subset (see .github/workflows/publish.yml).
+# All variants (also what GHCR publishes — see publish.yml).
 ALL_VARIANTS=(
   a13
   a13-houdini
-  a13-houdini-supersu
-  a13-microg
+  a13-supersu
   a13-mindthegapps
   a13-mindthegapps-supersu
   a13-magisk
-  a13-microg-magisk
   a13-mindthegapps-magisk
 )
 

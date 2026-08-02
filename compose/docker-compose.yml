@@ -28,3 +28,4 @@ services:
       - androidboot.redroid_gpu_mode=host
       - androidboot.redroid_gpu_node=${GPU_NODE:-/dev/dri/renderD128}
       - androidboot.use_memfd=1
+      - ro.setupwizard.mode=DISABLED

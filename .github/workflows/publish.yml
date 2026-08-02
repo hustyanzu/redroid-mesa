@@ -3,8 +3,7 @@ name: Publish to GHCR
 # CI runs in Fedora 44 so packages match the primary build host.
 # Users install deps themselves (README); this job uses scripts/ci/install-packages.sh only.
 #
-# GHCR publishes: pure / houdini / mindthegapps / magisk / supersu (+ combos).
-# microg stays local-build-only (see README).
+# GHCR publishes every variant under variants/ (houdini is implied in combo tags).
 
 on:
   push:
@@ -89,11 +88,12 @@ jobs:
           mkdir -p "$TMPDIR"
           owner_lc="$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')"
           remote="${REGISTRY}/${owner_lc}/${NAME}"
-          # Published to GHCR only (no microg / supersu yet).
           variants=(
             a13
             a13-houdini
+            a13-supersu
             a13-mindthegapps
+            a13-mindthegapps-supersu
             a13-magisk
             a13-mindthegapps-magisk
           )
@@ -109,7 +109,7 @@ jobs:
             docker push "${remote}:${local_tag}"
             docker push "${remote}:${v}"
 
-            if [ "$v" = "a13-mindthegapps-magisk" ]; then
+            if [ "$v" = "a13" ]; then
               docker tag "${NAME}:${local_tag}" "${remote}:latest"
               docker push "${remote}:latest"
               if [ "$EVENT" = "push" ]; then

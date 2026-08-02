@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Stage system overlays → out/extras/<name>/
 
-Features: houdini, microg, mindthegapps, magisk (ayasa520/redroid), supersu (switchable).
+Features: houdini, mindthegapps, magisk (ayasa520/redroid), supersu (switchable).
 Downloads are cached under third_party/downloads/.
 """
 from __future__ import annotations
@@ -47,12 +47,6 @@ SUPERSU_URL = (
 SUPERSU_MD5 = "f20d6d46b454cb74470977cb445eb8e4"
 SUPERSU_ZIP_NAME = "SR5-SuperSU-v2.82-SR5.zip"
 
-MICROG_URL = (
-    "https://github.com/ayasa520/MinMicroG/releases/download/latest/"
-    "MinMicroG-Standard-2.11.1-20230429100529.zip"
-)
-MICROG_MD5 = "0fe332a9caa3fbb294f2e2b50f720c6b"
-
 MINDTHEGAPPS_URL = (
     "https://github.com/MindTheGapps/13.0.0-x86_64/releases/download/"
     "MindTheGapps-13.0.0-x86_64-20231025_201203/"
@@ -61,7 +55,6 @@ MINDTHEGAPPS_URL = (
 MINDTHEGAPPS_MD5 = "8e08d656acfbb86bbc7b5f9608468ba7"
 
 ANDROID_VER = "13.0.0"
-SDK = 33
 
 # Toybox patch has no GNU -N/-r; use -i. Fallback appends arm/arm64 paths if hunks fail.
 HOUDINI_PATCH_LD_SH = r"""#!/system/bin/sh
@@ -136,17 +129,6 @@ on property:sys.boot_completed=1
     exec -- /system/bin/sh -c "echo ':arm64_exe:M::\\x7f\\x45\\x4c\\x46\\x02\\x01\\x01\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x02\\x00\\xb7::/system/bin/houdini64:P' >> /proc/sys/fs/binfmt_misc/register"
     exec -- /system/bin/sh -c "echo ':arm64_dyn:M::\\x7f\\x45\\x4c\\x46\\x02\\x01\\x01\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x03\\x00\\xb7::/system/bin/houdini64:P' >> /proc/sys/fs/binfmt_misc/register"
 """
-
-MICROG_RC = """
-on property:sys.boot_completed=1
-    start microg_service
-
-service microg_service /system/bin/sh /system/bin/npem
-    user root
-    group root
-    oneshot
-"""
-
 
 # Same init pattern as ayasa520/redroid-script (bootanim.rc snippet), as a dedicated magisk.rc.
 # Requires a Magisk build that still has --auto-selinux / --setup-sbin (ayasa520).
@@ -344,82 +326,6 @@ def stage_magisk(out: Path) -> None:
     )
 
 
-def extract_apk_native_libs(apk_path: Path, out_lib_parent: Path) -> None:
-    """Extract lib/x86_64/*.so next to the APK (Android packaging convention)."""
-    try:
-        with zipfile.ZipFile(apk_path) as z:
-            for name in z.namelist():
-                if not name.startswith("lib/x86_64/") or not name.endswith(".so"):
-                    continue
-                base = Path(name).name
-                dest_dir = out_lib_parent / "lib" / "x86_64"
-                dest_dir.mkdir(parents=True, exist_ok=True)
-                dest = dest_dir / base
-                with z.open(name) as src, dest.open("wb") as dst:
-                    shutil.copyfileobj(src, dst)
-    except zipfile.BadZipFile:
-        pass
-
-
-def stage_microg(out: Path) -> None:
-    if out.exists():
-        shutil.rmtree(out)
-    out.mkdir(parents=True)
-
-    z = ensure_download(MICROG_URL, DL / "MinMicroG-Standard.zip", MICROG_MD5)
-    with tempfile.TemporaryDirectory(prefix="microg-") as td:
-        td_path = Path(td)
-        unzip_to(z, td_path / "u")
-        src_system = td_path / "u" / "system"
-        if not src_system.is_dir():
-            found = list((td_path / "u").glob("*/system"))
-            if not found:
-                raise SystemExit("MinMicroG system/ missing")
-            src_system = found[0]
-
-        arch = "x86_64"
-        sub_arch = "x86"
-        for root, dirs, files in os.walk(src_system):
-            root_p = Path(root)
-            dir_name = root_p.name
-            flag = False
-            if dir_name.startswith("-") and dir_name.endswith("-"):
-                archs, sdks = [], []
-                for part in dir_name.split("-"):
-                    if not part:
-                        continue
-                    if part.isdigit():
-                        sdks.append(part)
-                    else:
-                        archs.append(part)
-                if (archs and arch not in archs and sub_arch not in archs) or (
-                    sdks and str(SDK) not in sdks
-                ):
-                    continue
-                flag = True
-
-            for file in files:
-                src_file = root_p / file
-                if not flag:
-                    rel = src_file.relative_to(src_system)
-                else:
-                    rel = (root_p.parent / file).relative_to(src_system)
-                dst_file = out / "system" / rel
-                dst_file.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(src_file, dst_file)
-                if dst_file.suffix.lower() == ".apk":
-                    extract_apk_native_libs(dst_file, dst_file.parent)
-
-    rc = out / "system/etc/init/microg.rc"
-    rc.parent.mkdir(parents=True, exist_ok=True)
-    rc.write_text(MICROG_RC.lstrip("\n"))
-    os.chmod(rc, 0o644)
-    npem = out / "system/bin/npem"
-    if npem.is_file():
-        os.chmod(npem, 0o755)
-    print(f"staged microg → {out}")
-
-
 def stage_mindthegapps(out: Path) -> None:
     if out.exists():
         shutil.rmtree(out)
@@ -500,7 +406,7 @@ def stage_supersu(out: Path) -> None:
     print(f"staged supersu → {out} (inventory under /system/etc/super-switcher)")
 
 
-FEATURE_CHOICES = ["houdini", "microg", "mindthegapps", "magisk", "supersu"]
+FEATURE_CHOICES = ["houdini", "mindthegapps", "magisk", "supersu"]
 
 
 def main() -> int:
@@ -525,13 +431,10 @@ def main() -> int:
     if not ordered:
         print("no features requested")
         return 0
-    if "microg" in seen and "mindthegapps" in seen:
-        raise SystemExit("microg and mindthegapps are mutually exclusive")
     if "magisk" in seen and "supersu" in seen:
         raise SystemExit("magisk and supersu are mutually exclusive")
     handlers = {
         "houdini": stage_houdini,
-        "microg": stage_microg,
         "mindthegapps": stage_mindthegapps,
         "magisk": stage_magisk,
         "supersu": stage_supersu,
