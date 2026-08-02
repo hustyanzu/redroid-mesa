@@ -1,11 +1,6 @@
 # Build / fetch caches
 /out/
-
-# third_party: vendored trees (e.g. supersu/) are committed;
-# ignore NDK / Mesa checkout / download cache only.
-/third_party/ndk/
-/third_party/mesa/
-/third_party/downloads/
+/third_party/
 
 # Runtime Android /data volumes (never commit)
 /data/

@@ -3,7 +3,7 @@
 
 Features: houdini, mindthegapps, magisk (ayasa520/redroid), supersu (switchable).
 Fetch caches live under third_party/downloads/; SuperSU is vendored at
-third_party/supersu/ (Chainfire CDN is flaky / may vanish).
+vendor/supersu/ (Chainfire CDN is flaky / may vanish).
 """
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ MAGISK_MD5 = "0a31050fdcfaa15f47c9dd1eb8d04fc8"
 # SuperSU 2.82 SR5 (Chainfire) — vendored; original:
 # https://download.chainfire.eu/1220/SuperSU/SR5-SuperSU-v2.82-SR5-20171001224502.zip
 SUPERSU_MD5 = "f20d6d46b454cb74470977cb445eb8e4"
-SUPERSU_ZIP = ROOT / "third_party" / "supersu" / "SR5-SuperSU-v2.82-SR5.zip"
+SUPERSU_ZIP = ROOT / "vendor" / "supersu" / "SR5-SuperSU-v2.82-SR5.zip"
 
 MINDTHEGAPPS_URL = (
     "https://github.com/MindTheGapps/13.0.0-x86_64/releases/download/"
