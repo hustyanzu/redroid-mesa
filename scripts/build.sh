@@ -303,13 +303,12 @@ build_one() {
 ALL_VARIANTS=(
   a13
   a13-houdini
+  a13-houdini-supersu
   a13-microg
   a13-mindthegapps
-  a13-magiskdelta
+  a13-mindthegapps-supersu
   a13-magisk
-  a13-microg-magiskdelta
   a13-microg-magisk
-  a13-mindthegapps-magiskdelta
   a13-mindthegapps-magisk
 )
 

@@ -1,7 +1,6 @@
 # Optional override for houdini variants.
-# IMPORTANT: base image is redroid 13.0.0_64only — do NOT list 32-bit ABIs
-# (x86 / armeabi-v7a / armeabi) or the container exits immediately (code 129).
-# Community docs that include 32-bit abilist target non-_64only images.
+# Base must be redroid 13.0.0-latest (WITH 32-bit), not _64only.
+# On _64only, listing x86/armeabi-v7a causes immediate exit 129.
 #
 # Usage:
 #   IMAGE=... docker compose -f compose/docker-compose.yml -f compose/docker-compose.houdini.yml up -d
@@ -15,8 +14,11 @@ services:
       - androidboot.redroid_gpu_mode=host
       - androidboot.redroid_gpu_node=${GPU_NODE:-/dev/dri/renderD128}
       - androidboot.use_memfd=1
-      - ro.product.cpu.abilist=x86_64,arm64-v8a
+      - ro.product.cpu.abilist=x86_64,x86,arm64-v8a,armeabi-v7a,armeabi
       - ro.product.cpu.abilist64=x86_64,arm64-v8a
+      - ro.product.cpu.abilist32=x86,armeabi-v7a,armeabi
+      - ro.dalvik.vm.isa.arm=x86
       - ro.dalvik.vm.isa.arm64=x86_64
       - ro.enable.native.bridge.exec=1
+      - ro.enable.native.bridge.exec64=1
       - ro.dalvik.vm.native.bridge=libhoudini.so

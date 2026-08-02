@@ -1,0 +1,53 @@
+#!/system/bin/sh
+# Enable SuperSU-style root (MuMu-like toggle ON). Shows SuperSU grant UI.
+# Inventory: /system/etc/super-switcher/  (not on PATH)
+# Runtime state: /data/local/super-switcher/state
+set -e
+INV=/system/etc/super-switcher
+DATA=/data/local/super-switcher
+mkdir -p "$DATA/stock"
+
+mount -o remount,rw / 2>/dev/null || true
+
+# Backup stock AOSP su once
+if [ ! -f "$DATA/stock/su" ] && [ -f /system/xbin/su ]; then
+  cp /system/xbin/su "$DATA/stock/su"
+fi
+
+pkill -9 daemonsu 2>/dev/null || true
+
+cp "$INV/x64/su" /system/xbin/su
+cp "$INV/x64/su" /system/xbin/daemonsu
+cp "$INV/x64/su" /system/bin/su
+mkdir -p /system/bin/.ext
+cp "$INV/x64/su" /system/bin/.ext/.su
+if [ -d /system/lib64 ]; then
+  cp "$INV/x64/libsupol.so" /system/lib64/libsupol.so
+else
+  cp "$INV/x64/libsupol.so" /system/xbin/libsupol.so
+fi
+chmod 0755 /system/xbin/daemonsu
+chmod 06755 /system/xbin/su /system/bin/su /system/bin/.ext/.su
+chown root:root /system/xbin/su /system/xbin/daemonsu /system/bin/su
+
+cp "$INV/common/install-recovery.sh" /system/etc/install-recovery.sh
+chmod 0755 /system/etc/install-recovery.sh
+echo 1 > /system/etc/.installed_su_daemon
+
+mkdir -p /system/app/Superuser
+cp "$INV/common/Superuser.apk" /system/app/Superuser/Superuser.apk
+chmod 0644 /system/app/Superuser/Superuser.apk
+
+echo on > "$DATA/state"
+
+/system/xbin/su --install >/dev/null 2>&1 || true
+/system/xbin/daemonsu --auto-daemon &
+sleep 0.3
+
+pm install -r -g "$INV/common/Superuser.apk" >/dev/null 2>&1 || \
+  pm install -r -g /system/app/Superuser/Superuser.apk >/dev/null 2>&1 || true
+
+echo "super-root-on: Root ON"
+ls -la /system/xbin/su /system/xbin/daemonsu
+ps -A | grep daemonsu | grep -v grep || true
+pm path eu.chainfire.supersu 2>/dev/null || echo "supersu apk pending"

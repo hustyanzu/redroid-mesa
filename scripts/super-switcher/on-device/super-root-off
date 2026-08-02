@@ -1,0 +1,37 @@
+#!/system/bin/sh
+# Disable SuperSU root (MuMu-like toggle OFF). Uninstalls SuperSU package.
+set -e
+DATA=/data/local/super-switcher
+mkdir -p "$DATA"
+
+mount -o remount,rw / 2>/dev/null || true
+
+pkill -9 daemonsu 2>/dev/null || true
+sleep 0.2
+
+rm -f /system/xbin/daemonsu
+rm -f /system/bin/.ext/.su
+rm -f /system/etc/install-recovery.sh
+rm -f /system/etc/.installed_su_daemon
+rm -f /system/xbin/libsupol.so /system/lib64/libsupol.so
+rm -rf /system/app/Superuser
+rm -f /system/bin/su
+
+if [ -f "$DATA/stock/su" ]; then
+  cp "$DATA/stock/su" /system/xbin/su
+  chown root:shell /system/xbin/su
+  chmod 04750 /system/xbin/su
+else
+  # Fallback: leave whatever was there without SuperSU bits
+  true
+fi
+
+echo off > "$DATA/state"
+
+pm uninstall eu.chainfire.supersu >/dev/null 2>&1 || true
+pm uninstall --user 0 eu.chainfire.supersu >/dev/null 2>&1 || true
+
+echo "super-root-off: Root OFF"
+ls -la /system/xbin/su 2>&1 || echo "no /system/xbin/su"
+ps -A | grep daemonsu | grep -v grep || echo "no daemonsu"
+pm list packages | grep -iE "chainfire|supersu" || echo "no_supersu_pkg"

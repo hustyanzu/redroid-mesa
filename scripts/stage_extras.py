@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Stage system overlays → out/extras/<name>/
 
-Features: houdini, microg, mindthegapps, magiskdelta (Kitsune), magisk (ayasa520/redroid).
+Features: houdini, microg, mindthegapps, magisk (ayasa520/redroid), supersu (switchable).
 Downloads are cached under third_party/downloads/.
 """
 from __future__ import annotations
@@ -31,13 +31,6 @@ HOUDINI_HACK_URL = (
 )
 HOUDINI_HACK_MD5 = "8f71a58f3e54eca879a2f7de64dbed58"
 
-# Kitsune Mask (Magisk Delta lineage, MagiskHide). Package: io.github.huskydg.magisk
-KITSUNE_URL = (
-    "https://github.com/Jordan231111/KitsuneMagisk/releases/download/"
-    "v31.0-25fa2159/app-release.apk"
-)
-KITSUNE_MD5 = "f3c819e276274f242f0e22921a73e2e7"
-
 # Same source as ayasa520/redroid-script: Magisk v30.7 fork that keeps
 # --auto-selinux / --setup-sbin (stock topjohnwu removed both → manager N/A on redroid).
 # Package: com.topjohnwu.magisk (different signing key than stock).
@@ -45,6 +38,14 @@ MAGISK_URL = (
     "https://github.com/ayasa520/Magisk/releases/download/v30.7/Magisk-v30.7.apk"
 )
 MAGISK_MD5 = "0a31050fdcfaa15f47c9dd1eb8d04fc8"
+
+# SuperSU 2.82 SR5 (Chainfire) — inventory for MuMu-like root toggle (default OFF).
+SUPERSU_URL = (
+    "https://download.chainfire.eu/1220/SuperSU/"
+    "SR5-SuperSU-v2.82-SR5-20171001224502.zip?retrieve_file=1"
+)
+SUPERSU_MD5 = "f20d6d46b454cb74470977cb445eb8e4"
+SUPERSU_ZIP_NAME = "SR5-SuperSU-v2.82-SR5.zip"
 
 MICROG_URL = (
     "https://github.com/ayasa520/MinMicroG/releases/download/latest/"
@@ -62,6 +63,56 @@ MINDTHEGAPPS_MD5 = "8e08d656acfbb86bbc7b5f9608468ba7"
 ANDROID_VER = "13.0.0"
 SDK = 33
 
+# Toybox patch has no GNU -N/-r; use -i. Fallback appends arm/arm64 paths if hunks fail.
+HOUDINI_PATCH_LD_SH = r"""#!/system/bin/sh
+# After apexd generates /linkerconfig, allow houdini to dlopen /system/lib64/arm64/*.
+set -e
+
+ensure_line() {
+  # ensure_line <file> <exact-line>
+  f="$1"
+  line="$2"
+  grep -Fqx "$line" "$f" 2>/dev/null && return 0
+  printf '%s\n' "$line" >> "$f"
+}
+
+ensure_houdini_paths() {
+  f="$1"
+  [ -f "$f" ] || return 0
+  # permitted + search for default namespace (libtcb.so lives under arm64/)
+  for p in \
+    'namespace.default.permitted.paths += /system/${LIB}' \
+    'namespace.default.permitted.paths += /system/${LIB}/arm' \
+    'namespace.default.permitted.paths += /system/${LIB}/arm/nb' \
+    'namespace.default.permitted.paths += /system/${LIB}/arm64' \
+    'namespace.default.permitted.paths += /system/${LIB}/arm64/nb' \
+    'namespace.default.permitted.paths += /apex/com.android.art/${LIB}' \
+    'namespace.default.search.paths += /system/${LIB}/arm' \
+    'namespace.default.search.paths += /system/${LIB}/arm/nb' \
+    'namespace.default.search.paths += /system/${LIB}/arm64' \
+    'namespace.default.search.paths += /system/${LIB}/arm64/nb'
+  do
+    ensure_line "$f" "$p"
+  done
+}
+
+apply_one() {
+  cfg="$1"
+  patchf="$2"
+  [ -f "$cfg" ] || return 0
+  [ -f "$patchf" ] || { ensure_houdini_paths "$cfg"; return 0; }
+  # Toybox patch: -i PATCH FILE (no -N/-r)
+  if /system/bin/patch -i "$patchf" "$cfg"; then
+    return 0
+  fi
+  ensure_houdini_paths "$cfg"
+}
+
+apply_one /linkerconfig/ld.config.txt /system/etc/ld_config.patch
+apply_one /linkerconfig/com.android.media.swcodec/ld.config.txt /system/etc/ld_config_swcodec.patch
+exit 0
+"""
+
 HOUDINI_RC = r"""
 on early-init
     mount binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc
@@ -74,10 +125,10 @@ on property:ro.enable.native.bridge.exec64=1
     copy /system/etc/binfmt_misc/arm64_exe /proc/sys/fs/binfmt_misc/register
     copy /system/etc/binfmt_misc/arm64_dyn /proc/sys/fs/binfmt_misc/register
 
-# Do NOT replace /system/etc/init/hw/init.rc. Apply linker patches softly.
-on property:apexd.status=activated
-    exec -- /system/bin/sh -c "/system/bin/patch -N -r - /linkerconfig/ld.config.txt < /system/etc/ld_config.patch || true"
-    exec -- /system/bin/sh -c "/system/bin/patch -N -r - /linkerconfig/com.android.media.swcodec/ld.config.txt < /system/etc/ld_config_swcodec.patch || true"
+# linkerconfig is generated here; must patch after apexd (tmpfs /linkerconfig).
+# A13 apexd sets apexd.status=ready (not "activated").
+on property:apexd.status=ready
+    exec u:r:su:s0 root root -- /system/bin/sh /system/etc/houdini_patch_ld.sh
 
 on property:sys.boot_completed=1
     exec -- /system/bin/sh -c "echo ':arm_exe:M::\\x7f\\x45\\x4c\\x46\\x01\\x01\\x01\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x02\\x00\\x28::/system/bin/houdini:P' >> /proc/sys/fs/binfmt_misc/register"
@@ -98,7 +149,7 @@ service microg_service /system/bin/sh /system/bin/npem
 
 
 # Same init pattern as ayasa520/redroid-script (bootanim.rc snippet), as a dedicated magisk.rc.
-# Requires a Magisk build that still has --auto-selinux / --setup-sbin (Kitsune or ayasa520).
+# Requires a Magisk build that still has --auto-selinux / --setup-sbin (ayasa520).
 MAGISK_RC_TEMPLATE = """
 on post-fs-data
     start logd
@@ -209,6 +260,11 @@ def stage_houdini(out: Path) -> None:
             if src.is_file():
                 shutil.copy2(src, dest_etc / name)
 
+    script = out / "system/etc/houdini_patch_ld.sh"
+    script.parent.mkdir(parents=True, exist_ok=True)
+    script.write_text(HOUDINI_PATCH_LD_SH.lstrip("\n"))
+    os.chmod(script, 0o755)
+
     rc = out / "system/etc/init/houdini.rc"
     rc.parent.mkdir(parents=True, exist_ok=True)
     rc.write_text(HOUDINI_RC.lstrip("\n"))
@@ -264,7 +320,7 @@ def stage_magisk_apk(
         if b"--setup-sbin" not in probe.read_bytes():
             raise SystemExit(
                 f"{label}: APK magisk binary lacks --setup-sbin "
-                "(need Kitsune or ayasa520 Magisk, not stock topjohnwu)"
+                "(need ayasa520 Magisk, not stock topjohnwu)"
             )
         stub = td_path / "apk" / "assets" / "stub.apk"
         if stub.is_file():
@@ -275,17 +331,6 @@ def stage_magisk_apk(
     rc.write_text(MAGISK_RC_TEMPLATE.format(package=package).lstrip("\n"))
     os.chmod(rc, 0o644)
     print(f"staged {label} → {out} (package={package})")
-
-
-def stage_magiskdelta(out: Path) -> None:
-    stage_magisk_apk(
-        out,
-        url=KITSUNE_URL,
-        md5=KITSUNE_MD5,
-        cache_name="kitsune-magisk.apk",
-        label="magiskdelta",
-        package="io.github.huskydg.magisk",
-    )
 
 
 def stage_magisk(out: Path) -> None:
@@ -404,7 +449,58 @@ def stage_mindthegapps(out: Path) -> None:
     print(f"staged mindthegapps → {out}")
 
 
-FEATURE_CHOICES = ["houdini", "microg", "mindthegapps", "magiskdelta", "magisk"]
+def stage_supersu(out: Path) -> None:
+    """Stage SuperSU inventory + on-device toggle scripts. Default Root OFF (no boot daemon)."""
+    if out.exists():
+        shutil.rmtree(out)
+    inv = out / "system/etc/super-switcher"
+    inv.mkdir(parents=True)
+
+    z = ensure_download(SUPERSU_URL, DL / SUPERSU_ZIP_NAME, SUPERSU_MD5)
+    with tempfile.TemporaryDirectory(prefix="supersu-") as td:
+        td_path = Path(td)
+        unzip_to(z, td_path / "u")
+        root = td_path / "u"
+        # Zip may extract flat or under one top dir
+        if not (root / "x64").is_dir():
+            found = list(root.glob("*/x64"))
+            if not found:
+                raise SystemExit("SuperSU x64/ missing")
+            root = found[0].parent
+
+        for arch in ("x64", "x86"):
+            src = root / arch
+            if not src.is_dir():
+                raise SystemExit(f"SuperSU {arch}/ missing")
+            dest = inv / arch
+            dest.mkdir(parents=True)
+            su_name = "su.pie" if arch == "x86" and (src / "su.pie").is_file() else "su"
+            shutil.copy2(src / su_name, dest / "su")
+            shutil.copy2(src / "libsupol.so", dest / "libsupol.so")
+            os.chmod(dest / "su", 0o755)
+
+        common = root / "common"
+        dest_c = inv / "common"
+        dest_c.mkdir(parents=True)
+        shutil.copy2(common / "Superuser.apk", dest_c / "Superuser.apk")
+        shutil.copy2(common / "install-recovery.sh", dest_c / "install-recovery.sh")
+        os.chmod(dest_c / "install-recovery.sh", 0o755)
+
+    scripts_src = ROOT / "scripts/super-switcher/on-device"
+    bindir = out / "system/bin"
+    bindir.mkdir(parents=True, exist_ok=True)
+    for name in ("super-root-on", "super-root-off"):
+        src = scripts_src / name
+        if not src.is_file():
+            raise SystemExit(f"missing {src}")
+        dest = bindir / name
+        shutil.copy2(src, dest)
+        os.chmod(dest, 0o755)
+
+    print(f"staged supersu → {out} (inventory under /system/etc/super-switcher)")
+
+
+FEATURE_CHOICES = ["houdini", "microg", "mindthegapps", "magisk", "supersu"]
 
 
 def main() -> int:
@@ -431,14 +527,14 @@ def main() -> int:
         return 0
     if "microg" in seen and "mindthegapps" in seen:
         raise SystemExit("microg and mindthegapps are mutually exclusive")
-    if "magisk" in seen and "magiskdelta" in seen:
-        raise SystemExit("magisk and magiskdelta are mutually exclusive")
+    if "magisk" in seen and "supersu" in seen:
+        raise SystemExit("magisk and supersu are mutually exclusive")
     handlers = {
         "houdini": stage_houdini,
         "microg": stage_microg,
         "mindthegapps": stage_mindthegapps,
-        "magiskdelta": stage_magiskdelta,
         "magisk": stage_magisk,
+        "supersu": stage_supersu,
     }
     for f in ordered:
         handlers[f](EXTRAS / f)

@@ -4,7 +4,7 @@ name: Publish to GHCR
 # Users install deps themselves (README); this job uses scripts/ci/install-packages.sh only.
 #
 # GHCR publishes only: pure / houdini / mindthegapps / magisk (+ combo).
-# microg and magiskdelta stay local-build-only (see README).
+# microg and supersu stay local-build-only for now (see README).
 
 on:
   push:
@@ -89,7 +89,7 @@ jobs:
           mkdir -p "$TMPDIR"
           owner_lc="$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')"
           remote="${REGISTRY}/${owner_lc}/${NAME}"
-          # Published to GHCR only (no microg / magiskdelta).
+          # Published to GHCR only (no microg / supersu yet).
           variants=(
             a13
             a13-houdini

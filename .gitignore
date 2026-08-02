@@ -38,3 +38,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Local SuperSU / misc download scratch
+/dl/
