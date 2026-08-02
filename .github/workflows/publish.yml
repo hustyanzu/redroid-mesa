@@ -3,8 +3,8 @@ name: Publish to GHCR
 # CI runs in Fedora 44 so packages match the primary build host.
 # Users install deps themselves (README); this job uses scripts/ci/install-packages.sh only.
 #
-# GHCR publishes only: pure / houdini / mindthegapps / magisk (+ combo).
-# microg and supersu stay local-build-only for now (see README).
+# GHCR publishes: pure / houdini / mindthegapps / magisk / supersu (+ combos).
+# microg stays local-build-only (see README).
 
 on:
   push:
