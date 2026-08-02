@@ -1,8 +1,11 @@
 # redroid-mesa
 
-Newer **Android Mesa** for **Redroid A13** host-GPU — aimed at **Intel’s latest iGPUs**
-(e.g. Arrow Lake `8086:7d67`) where the Mesa shipped in stock Redroid is too old.
-Other relatively new GPUs that fail for the same reason can try these images too.
+Newer **Android Mesa (`iris`)** for **Redroid A13** host-GPU on **Intel iGPU**
+(e.g. Arrow Lake `8086:7d67`) where stock Redroid’s Mesa is too old.
+
+CI (`publish.yml` → `build.sh`) builds the same thing as a local `--all`: host
+`mesa_clc` tools, then cross-compiles **Android x86_64 Mesa with `gallium-drivers=iris` only**.
+AMD (`radeonsi`) / other vendors are **not** in the image.
 
 ## Variants
 
@@ -132,6 +135,7 @@ sudo apt-get install -y --no-install-recommends \
 chmod +x scripts/*.sh
 ./scripts/build.sh                  # pure a13
 ./scripts/build.sh a13-microg
-./scripts/build.sh --all            # all ten variants (Mesa compiled once)
+./scripts/build.sh --mesa-only     # compile Mesa only
+./scripts/build.sh --all           # all ten variants (Mesa compiled once)
 SKIP_MESA_BUILD=1 ./scripts/build.sh --all
 ```

@@ -3,6 +3,7 @@
 # Usage:
 #   ./scripts/build.sh                 # pure a13
 #   ./scripts/build.sh a13-microg
+#   ./scripts/build.sh --mesa-only     # fetch + compile Mesa (no docker image)
 #   ./scripts/build.sh --all           # all variants (Mesa once)
 #   SKIP_MESA_BUILD=1 ./scripts/build.sh --all
 # Host packages: install yourself (see README). CI uses scripts/ci/install-packages.sh.
@@ -182,6 +183,8 @@ EOF
     -Dbuild-tests=false
   ninja -C "$build"
   DESTDIR= ninja -C "$build" install
+  # Drop meson/ninja trees; keep install prefix for stage_vendor.
+  rm -rf "$build" "$ROOT/out/build-compiler"
 }
 
 stage_vendor() {
@@ -282,6 +285,7 @@ docker_image() {
     "${tags[@]}" \
     "$ctx"
 
+  rm -rf "$ctx"
   echo "Local tags: ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:${VARIANT_ID}"
 }
 
@@ -308,20 +312,32 @@ ALL_VARIANTS=(
   a13-mindthegapps-magisk
 )
 
-if [[ "${1:-}" == "--all" ]]; then
+ensure_mesa() {
   if [[ "${SKIP_MESA_BUILD:-0}" == "1" ]]; then
     log "reuse existing out/android-x86_64"
     [[ -f "$ROOT/out/android-x86_64/lib/libgallium_dri.so" ]] || die "no Mesa build present"
-  else
-    # Mesa is shared — load any variant for MESA_TAG / ANDROID_API
-    load_variant a13
-    log "fetch"
-    fetch_sources
-    log "mesa_clc"
-    build_mesa_clc
-    log "android mesa"
-    build_android_mesa
+    return
   fi
+  # Mesa is shared — load any variant for MESA_TAG / ANDROID_API
+  load_variant a13
+  log "fetch"
+  fetch_sources
+  log "mesa_clc"
+  build_mesa_clc
+  log "android mesa"
+  build_android_mesa
+  # Host CLC tools not needed after Android Mesa is installed.
+  rm -rf "$ROOT/out/mesa-compiler" "$ROOT/out/build-compiler"
+}
+
+if [[ "${1:-}" == "--mesa-only" ]]; then
+  ensure_mesa
+  log "DONE (mesa only)"
+  exit 0
+fi
+
+if [[ "${1:-}" == "--all" ]]; then
+  ensure_mesa
   for id in "${ALL_VARIANTS[@]}"; do
     build_one "$id"
   done
@@ -336,12 +352,7 @@ if [[ "${SKIP_MESA_BUILD:-0}" == "1" ]]; then
   log "reuse existing out/android-x86_64"
   [[ -f "$ROOT/out/android-x86_64/lib/libgallium_dri.so" ]] || die "no Mesa build present"
 else
-  log "fetch"
-  fetch_sources
-  log "mesa_clc"
-  build_mesa_clc
-  log "android mesa"
-  build_android_mesa
+  ensure_mesa
 fi
 
 build_one "$VARIANT_ID"

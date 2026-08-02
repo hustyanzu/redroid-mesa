@@ -27,6 +27,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Free disk space
+        run: bash scripts/ci/free-disk.sh
+
       - name: Install Fedora build packages
         run: bash scripts/ci/install-packages.sh
 
@@ -38,14 +41,6 @@ jobs:
             third_party/mesa
             third_party/downloads
           key: tp-fedora-${{ hashFiles('variants/**/variant.env', 'patches/**', 'scripts/**') }}
-
-      - name: Build Mesa + all variant images
-        env:
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          IMAGE_SOURCE: https://github.com/${{ github.repository }}
-        run: |
-          chmod +x scripts/*.sh scripts/ci/*.sh
-          ./scripts/build.sh --all
 
       - name: Load metadata
         id: meta
@@ -65,15 +60,30 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Tag and push all variants
+      - name: Build Mesa once
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          IMAGE_SOURCE: https://github.com/${{ github.repository }}
+          TMPDIR: ${{ github.workspace }}/.ci-tmp
+        run: |
+          chmod +x scripts/*.sh scripts/ci/*.sh
+          mkdir -p "$TMPDIR"
+          ./scripts/build.sh --mesa-only
+          df -h
+
+      - name: Build, push, prune each variant
         env:
           OWNER: ${{ github.repository_owner }}
           NAME: ${{ steps.meta.outputs.image_name }}
           VER: ${{ steps.meta.outputs.mesa_version }}
           REF: ${{ github.ref_name }}
           EVENT: ${{ github.event_name }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          IMAGE_SOURCE: https://github.com/${{ github.repository }}
+          TMPDIR: ${{ github.workspace }}/.ci-tmp
         run: |
           set -euo pipefail
+          mkdir -p "$TMPDIR"
           owner_lc="$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')"
           remote="${REGISTRY}/${owner_lc}/${NAME}"
           variants=(
@@ -90,20 +100,37 @@ jobs:
           )
 
           for v in "${variants[@]}"; do
+            echo "==== variant $v ===="
+            df -h
+            SKIP_MESA_BUILD=1 ./scripts/build.sh "$v"
+
             local_tag="${v}-${VER}"
             docker tag "${NAME}:${local_tag}" "${remote}:${local_tag}"
             docker tag "${NAME}:${local_tag}" "${remote}:${v}"
             docker push "${remote}:${local_tag}"
             docker push "${remote}:${v}"
+
+            if [ "$v" = "a13-mindthegapps-magisk" ]; then
+              docker tag "${NAME}:${local_tag}" "${remote}:latest"
+              docker push "${remote}:latest"
+              if [ "$EVENT" = "push" ]; then
+                docker tag "${NAME}:${local_tag}" "${remote}:${REF}"
+                docker push "${remote}:${REF}"
+              fi
+            fi
+
+            # Keep only the redroid base; drop just-built tags so 10 images don't pile up.
+            docker rmi -f \
+              "${NAME}:${local_tag}" \
+              "${NAME}:${v}" \
+              "${remote}:${local_tag}" \
+              "${remote}:${v}" \
+              "${remote}:latest" \
+              "${remote}:${REF}" \
+              2>/dev/null || true
+            docker system prune -f 2>/dev/null || true
+            rm -rf out/docker-context out/extras "${TMPDIR:?}/"* 2>/dev/null || true
+            df -h
           done
-
-          # latest / git tag = MindTheGapps + official Magisk
-          docker tag "${NAME}:a13-mindthegapps-magisk-${VER}" "${remote}:latest"
-          docker push "${remote}:latest"
-
-          if [ "$EVENT" = "push" ]; then
-            docker tag "${NAME}:a13-mindthegapps-magisk-${VER}" "${remote}:${REF}"
-            docker push "${remote}:${REF}"
-          fi
 
           echo "Pushed ${remote} variants: ${variants[*]} (+ latest)"
