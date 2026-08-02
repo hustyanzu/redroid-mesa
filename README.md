@@ -21,7 +21,9 @@ Base: Redroid **`13.0.0 (with 32-bit ABIs)`**. Non-pure images always include **
 |---|---|
 | `a13` | Mesa only |
 | `a13-houdini` | + houdini |
+| `a13-houdini-supersu` | + houdini + **SuperSU switcher** (default Root OFF) |
 | `a13-mindthegapps` | + houdini + MindTheGapps |
+| `a13-mindthegapps-supersu` | + houdini + MindTheGapps + SuperSU switcher |
 | `a13-magisk` | + houdini + Magisk (ayasa520 / redroid-script) |
 | `a13-mindthegapps-magisk` / `latest` | + houdini + MindTheGapps + Magisk |
 
@@ -31,18 +33,16 @@ Stock topjohnwu Magisk dropped that flag and shows N/A on redroid.
 
 Optional boot prop: `ro.setupwizard.mode=DISABLED` (skip GApps wizard).
 
-### Local-only (not pushed to GHCR yet)
+### Local-only (not pushed to GHCR)
 
 Still buildable with `./scripts/build.sh <id>` or `--all`:
 
 | Tag | Contents |
 |---|---|
-| `a13-houdini-supersu` | + houdini + **SuperSU switcher** (default Root OFF) |
-| `a13-mindthegapps-supersu` | + houdini + MindTheGapps + SuperSU switcher |
 | `a13-microg` | + houdini + MinMicroG |
 | `a13-microg-magisk` | MinMicroG + ayasa520 Magisk |
 
-`./scripts/build.sh --all` builds every local variant (Mesa once). CI does **not** push supersu/microg tags yet.
+`./scripts/build.sh --all` builds every local variant (Mesa once). CI does **not** push microg tags.
 
 ## SuperSU switcher (MuMu-like Root toggle)
 
