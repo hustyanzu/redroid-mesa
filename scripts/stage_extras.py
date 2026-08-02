@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Stage system overlays → out/extras/<name>/
 
-Features: houdini, microg, mindthegapps, magiskdelta (Kitsune), magisk (official).
+Features: houdini, microg, mindthegapps, magiskdelta (Kitsune), magisk (ayasa520/redroid).
 Downloads are cached under third_party/downloads/.
 """
 from __future__ import annotations
@@ -38,11 +38,13 @@ KITSUNE_URL = (
 )
 KITSUNE_MD5 = "f3c819e276274f242f0e22921a73e2e7"
 
-# Official Magisk (Zygisk / DenyList; install Shamiko yourself). Package: com.topjohnwu.magisk
-MAGISK_OFFICIAL_URL = (
-    "https://github.com/topjohnwu/Magisk/releases/download/v30.7/Magisk-v30.7.apk"
+# Same source as ayasa520/redroid-script: Magisk v30.7 fork that keeps
+# --auto-selinux / --setup-sbin (stock topjohnwu removed both → manager N/A on redroid).
+# Package: com.topjohnwu.magisk (different signing key than stock).
+MAGISK_URL = (
+    "https://github.com/ayasa520/Magisk/releases/download/v30.7/Magisk-v30.7.apk"
 )
-MAGISK_OFFICIAL_MD5 = "0c937d8957520a1a3585e4363a8ccab4"
+MAGISK_MD5 = "0a31050fdcfaa15f47c9dd1eb8d04fc8"
 
 MICROG_URL = (
     "https://github.com/ayasa520/MinMicroG/releases/download/latest/"
@@ -95,8 +97,9 @@ service microg_service /system/bin/sh /system/bin/npem
 """
 
 
-# Kitsune still exposes --auto-selinux --setup-sbin (official Magisk removed both).
-MAGISK_RC_KITSUNE = """
+# Same init pattern as ayasa520/redroid-script (bootanim.rc snippet), as a dedicated magisk.rc.
+# Requires a Magisk build that still has --auto-selinux / --setup-sbin (Kitsune or ayasa520).
+MAGISK_RC_TEMPLATE = """
 on post-fs-data
     start logd
     exec u:r:su:s0 root root -- /system/etc/init/magisk/magiskpolicy --live --magisk
@@ -111,89 +114,13 @@ on property:vold.decrypt=trigger_restart_framework
 on property:sys.boot_completed=1
     mkdir /data/adb/magisk 755
     exec u:r:su:s0 root root -- /sbin/magisk --auto-selinux --boot-complete
-    exec -- /system/bin/sh -c "if [ ! -e /data/data/io.github.huskydg.magisk ] ; then pm install /system/etc/init/magisk/magisk.apk ; fi"
+    exec -- /system/bin/sh -c "if [ ! -e /data/data/{package} ] ; then pm install /system/etc/init/magisk/magisk.apk ; fi"
 
 on property:init.svc.zygote=restarting
     exec u:r:su:s0 root root -- /sbin/magisk --auto-selinux --zygote-restart
 
 on property:init.svc.zygote=stopped
     exec u:r:su:s0 root root -- /sbin/magisk --auto-selinux --zygote-restart
-"""
-
-# Official Magisk: shell setup-sbin (no --auto-selinux / --setup-sbin in the binary).
-# --post-fs-data does not exit; it signals via /dev/.magisk_unblock (stock Magisk pattern).
-MAGISK_RC_OFFICIAL = """
-on post-fs-data
-    start logd
-    exec u:r:su:s0 root root -- /system/etc/init/magisk/magiskpolicy --live --magisk
-    exec u:r:magisk:s0 root root -- /system/etc/init/magisk/magiskpolicy --live --magisk
-    exec u:r:update_engine:s0 root root -- /system/etc/init/magisk/magiskpolicy --live --magisk
-    exec u:r:su:s0 root root -- /system/bin/sh /system/etc/init/magisk/setup-sbin.sh
-    mkdir /sbin/.magisk 700
-    mkdir /sbin/.magisk/mirror 700
-    mkdir /sbin/.magisk/block 700
-    mkdir /sbin/.magisk/device 700
-    mkdir /sbin/.magisk/worker 700
-    touch /sbin/.magisk/config
-    rm /dev/.magisk_unblock
-    start magisk_pfsd
-    wait /dev/.magisk_unblock 40
-    rm /dev/.magisk_unblock
-
-service magisk_pfsd /sbin/magisk --post-fs-data
-    user root
-    seclabel u:r:su:s0
-    oneshot
-
-service magisk_svc /sbin/magisk --service
-    class late_start
-    user root
-    seclabel u:r:su:s0
-    oneshot
-
-on nonencrypted
-    start magisk_svc
-on property:vold.decrypt=trigger_restart_framework
-    start magisk_svc
-on property:sys.boot_completed=1
-    mkdir /data/adb/magisk 755
-    exec u:r:su:s0 root root -- /sbin/magisk --boot-complete
-    exec -- /system/bin/sh -c "if [ ! -e /data/data/com.topjohnwu.magisk ] ; then pm install /system/etc/init/magisk/magisk.apk ; fi"
-
-on property:init.svc.zygote=restarting
-    exec u:r:su:s0 root root -- /sbin/magisk --zygote-restart
-
-on property:init.svc.zygote=stopped
-    exec u:r:su:s0 root root -- /sbin/magisk --zygote-restart
-"""
-
-SETUP_SBIN_SH = r"""#!/system/bin/sh
-# Mimic Magisk --setup-sbin for official builds (flag removed upstream).
-# Do NOT run magisk --daemon here: it does not return and blocks init `exec`.
-MAGISKDIR=/system/etc/init/magisk
-MAGISKTMP=/sbin
-mkdir -p "$MAGISKTMP"
-mount -t tmpfs -o mode=0755 tmpfs "$MAGISKTMP" 2>/dev/null || true
-for f in magisk magisk64 magiskpolicy busybox magiskboot magiskinit init-ld stub.apk; do
-  if [ -f "$MAGISKDIR/$f" ]; then
-    cp -f "$MAGISKDIR/$f" "$MAGISKTMP/$f"
-    chmod 755 "$MAGISKTMP/$f" 2>/dev/null || chmod 644 "$MAGISKTMP/$f"
-  fi
-done
-# Prefer unified magisk name for applets.
-if [ -f "$MAGISKTMP/magisk64" ] && [ ! -f "$MAGISKTMP/magisk" ]; then
-  cp -f "$MAGISKTMP/magisk64" "$MAGISKTMP/magisk"
-  chmod 755 "$MAGISKTMP/magisk"
-fi
-if [ -f "$MAGISKTMP/magisk" ] && [ ! -f "$MAGISKTMP/magisk64" ]; then
-  cp -f "$MAGISKTMP/magisk" "$MAGISKTMP/magisk64"
-  chmod 755 "$MAGISKTMP/magisk64"
-fi
-ln -sf magisk "$MAGISKTMP/su"
-ln -sf magisk "$MAGISKTMP/resetprop"
-ln -sf magiskpolicy "$MAGISKTMP/supolicy"
-mkdir -p /data/adb/magisk
-cp -f "$MAGISKDIR"/* /data/adb/magisk/ 2>/dev/null || true
 """
 
 def md5_file(path: Path) -> str:
@@ -299,9 +226,9 @@ def stage_magisk_apk(
     md5: str,
     cache_name: str,
     label: str,
-    official: bool,
+    package: str,
 ) -> None:
-    """Extract Magisk/Kitsune APK libs + write magisk.rc for the given build."""
+    """Extract Magisk APK libs + write magisk.rc (redroid-script style setup-sbin)."""
     if out.exists():
         shutil.rmtree(out)
     magisk_dir = out / "system/etc/init/magisk"
@@ -332,21 +259,22 @@ def stage_magisk_apk(
             os.chmod(magisk64, 0o755)
         if not magisk64.is_file() and not magisk.is_file():
             raise SystemExit(f"{label}: magisk/magisk64 binary missing after extract")
+        # Binary must support redroid init flags (Android ELF — strings scan only).
+        probe = magisk64 if magisk64.is_file() else magisk
+        if b"--setup-sbin" not in probe.read_bytes():
+            raise SystemExit(
+                f"{label}: APK magisk binary lacks --setup-sbin "
+                "(need Kitsune or ayasa520 Magisk, not stock topjohnwu)"
+            )
         stub = td_path / "apk" / "assets" / "stub.apk"
         if stub.is_file():
             shutil.copyfile(stub, magisk_dir / "stub.apk")
 
     shutil.copyfile(apk, magisk_dir / "magisk.apk")
     rc = out / "system/etc/init/magisk.rc"
-    if official:
-        setup = magisk_dir / "setup-sbin.sh"
-        setup.write_text(SETUP_SBIN_SH.lstrip("\n"))
-        os.chmod(setup, 0o755)
-        rc.write_text(MAGISK_RC_OFFICIAL.lstrip("\n"))
-    else:
-        rc.write_text(MAGISK_RC_KITSUNE.lstrip("\n"))
+    rc.write_text(MAGISK_RC_TEMPLATE.format(package=package).lstrip("\n"))
     os.chmod(rc, 0o644)
-    print(f"staged {label} → {out} (official={official})")
+    print(f"staged {label} → {out} (package={package})")
 
 
 def stage_magiskdelta(out: Path) -> None:
@@ -356,18 +284,18 @@ def stage_magiskdelta(out: Path) -> None:
         md5=KITSUNE_MD5,
         cache_name="kitsune-magisk.apk",
         label="magiskdelta",
-        official=False,
+        package="io.github.huskydg.magisk",
     )
 
 
 def stage_magisk(out: Path) -> None:
     stage_magisk_apk(
         out,
-        url=MAGISK_OFFICIAL_URL,
-        md5=MAGISK_OFFICIAL_MD5,
-        cache_name="magisk-official.apk",
+        url=MAGISK_URL,
+        md5=MAGISK_MD5,
+        cache_name="magisk-ayasa520.apk",
         label="magisk",
-        official=True,
+        package="com.topjohnwu.magisk",
     )
 
 

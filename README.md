@@ -3,30 +3,42 @@
 Newer **Android Mesa (`iris`)** for **Redroid A13** host-GPU on **Intel iGPU**
 (e.g. Arrow Lake `8086:7d67`) where stock Redroid’s Mesa is too old.
 
-CI (`publish.yml` → `build.sh`) builds the same thing as a local `--all`: host
-`mesa_clc` tools, then cross-compiles **Android x86_64 Mesa with `gallium-drivers=iris` only**.
-AMD (`radeonsi`) / other vendors are **not** in the image.
+CI builds host `mesa_clc`, then cross-compiles **Android x86_64 Mesa with
+`gallium-drivers=iris` only**. AMD / other vendors are **not** in the image.
 
 ## Variants
 
 Base: Redroid **`13.0.0_64only`**. Non-pure images always include **houdini**.
-GApps picks **one of** microG / MindTheGapps; Magisk picks **one of** Kitsune / official.
 
-| Tag | GApps | Magisk |
-|---|---|---|
-| `a13` | — | — |
-| `a13-houdini` | — | — |
-| `a13-microg` | MinMicroG | — |
-| `a13-mindthegapps` | MindTheGapps | — |
-| `a13-magiskdelta` | — | Kitsune (Magisk Delta / MagiskHide) |
-| `a13-magisk` | — | Official Magisk (Zygisk; install Shamiko yourself) |
-| `a13-microg-magiskdelta` | MinMicroG | Kitsune |
-| `a13-microg-magisk` | MinMicroG | Official Magisk |
-| `a13-mindthegapps-magiskdelta` | MindTheGapps | Kitsune |
-| `a13-mindthegapps-magisk` / `latest` | MindTheGapps | Official Magisk |
+### GHCR (CI publishes these)
 
-Kitsune manager: `io.github.huskydg.magisk`. Official: `com.topjohnwu.magisk`.
-Optional boot prop to skip GApps setup wizard: `ro.setupwizard.mode=DISABLED`.
+| Tag | Contents |
+|---|---|
+| `a13` | Mesa only |
+| `a13-houdini` | + houdini |
+| `a13-mindthegapps` | + houdini + MindTheGapps |
+| `a13-magisk` | + houdini + Magisk (ayasa520 / redroid-script) |
+| `a13-mindthegapps-magisk` / `latest` | + houdini + MindTheGapps + Magisk |
+
+Magisk here is [ayasa520’s v30.7 fork](https://github.com/ayasa520/Magisk) (`com.topjohnwu.magisk`),
+same `--setup-sbin` init as [redroid-script](https://github.com/ayasa520/redroid-script).
+Stock topjohnwu Magisk dropped that flag and shows N/A on redroid.
+
+Optional boot prop: `ro.setupwizard.mode=DISABLED` (skip GApps wizard).
+
+### Local-only (not pushed to GHCR)
+
+Still buildable with `./scripts/build.sh <id>` or `--all`:
+
+| Tag | Contents |
+|---|---|
+| `a13-microg` | + houdini + MinMicroG |
+| `a13-magiskdelta` | + houdini + Kitsune (`io.github.huskydg.magisk`) |
+| `a13-microg-magiskdelta` | MinMicroG + Kitsune |
+| `a13-microg-magisk` | MinMicroG + ayasa520 Magisk |
+| `a13-mindthegapps-magiskdelta` | MindTheGapps + Kitsune |
+
+`./scripts/build.sh --all` builds **all** ten (including local-only). CI does **not**.
 
 ## GHCR compose
 
@@ -136,6 +148,6 @@ chmod +x scripts/*.sh
 ./scripts/build.sh                  # pure a13
 ./scripts/build.sh a13-microg
 ./scripts/build.sh --mesa-only     # compile Mesa only
-./scripts/build.sh --all           # all ten variants (Mesa compiled once)
-SKIP_MESA_BUILD=1 ./scripts/build.sh --all
+./scripts/build.sh --all           # all ten variants (incl. local-only; Mesa once)
+SKIP_MESA_BUILD=1 ./scripts/build.sh a13-microg   # example local-only tag
 ```

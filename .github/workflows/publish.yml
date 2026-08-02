@@ -2,6 +2,9 @@ name: Publish to GHCR
 
 # CI runs in Fedora 44 so packages match the primary build host.
 # Users install deps themselves (README); this job uses scripts/ci/install-packages.sh only.
+#
+# GHCR publishes only: pure / houdini / mindthegapps / magisk (+ combo).
+# microg and magiskdelta stay local-build-only (see README).
 
 on:
   push:
@@ -86,16 +89,12 @@ jobs:
           mkdir -p "$TMPDIR"
           owner_lc="$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')"
           remote="${REGISTRY}/${owner_lc}/${NAME}"
+          # Published to GHCR only (no microg / magiskdelta).
           variants=(
             a13
             a13-houdini
-            a13-microg
             a13-mindthegapps
-            a13-magiskdelta
             a13-magisk
-            a13-microg-magiskdelta
-            a13-microg-magisk
-            a13-mindthegapps-magiskdelta
             a13-mindthegapps-magisk
           )
 
@@ -119,7 +118,7 @@ jobs:
               fi
             fi
 
-            # Keep only the redroid base; drop just-built tags so 10 images don't pile up.
+            # Drop just-built tags so images do not pile up on the runner.
             docker rmi -f \
               "${NAME}:${local_tag}" \
               "${NAME}:${v}" \

@@ -299,6 +299,7 @@ build_one() {
 }
 
 # --- main ---
+# All local variants. GHCR publishes only a subset (see .github/workflows/publish.yml).
 ALL_VARIANTS=(
   a13
   a13-houdini
