@@ -2,7 +2,8 @@
 """Stage system overlays → out/extras/<name>/
 
 Features: houdini, mindthegapps, magisk (ayasa520/redroid), supersu (switchable).
-Downloads are cached under third_party/downloads/.
+Fetch caches live under third_party/downloads/; SuperSU is vendored at
+third_party/supersu/ (Chainfire CDN is flaky / may vanish).
 """
 from __future__ import annotations
 
@@ -39,13 +40,10 @@ MAGISK_URL = (
 )
 MAGISK_MD5 = "0a31050fdcfaa15f47c9dd1eb8d04fc8"
 
-# SuperSU 2.82 SR5 (Chainfire) — inventory for MuMu-like root toggle (default OFF).
-SUPERSU_URL = (
-    "https://download.chainfire.eu/1220/SuperSU/"
-    "SR5-SuperSU-v2.82-SR5-20171001224502.zip?retrieve_file=1"
-)
+# SuperSU 2.82 SR5 (Chainfire) — vendored; original:
+# https://download.chainfire.eu/1220/SuperSU/SR5-SuperSU-v2.82-SR5-20171001224502.zip
 SUPERSU_MD5 = "f20d6d46b454cb74470977cb445eb8e4"
-SUPERSU_ZIP_NAME = "SR5-SuperSU-v2.82-SR5.zip"
+SUPERSU_ZIP = ROOT / "third_party" / "supersu" / "SR5-SuperSU-v2.82-SR5.zip"
 
 MINDTHEGAPPS_URL = (
     "https://github.com/MindTheGapps/13.0.0-x86_64/releases/download/"
@@ -171,19 +169,22 @@ def ensure_download(url: str, dest: Path, expect_md5: str) -> Path:
         return dest
     print(f"download {url}")
     tmp = dest.with_suffix(dest.suffix + ".part")
-    cmd = [
-        "curl",
-        "-fL",
-        "--retry",
-        "5",
-        "--retry-all-errors",
-        "-C",
-        "-",
-        "-o",
-        str(tmp),
-        url,
-    ]
-    subprocess.run(cmd, check=True)
+    tmp.unlink(missing_ok=True)
+    subprocess.run(
+        [
+            "curl",
+            "-fL",
+            "--retry",
+            "5",
+            "--retry-all-errors",
+            "-C",
+            "-",
+            "-o",
+            str(tmp),
+            url,
+        ],
+        check=True,
+    )
     got = md5_file(tmp)
     if got != expect_md5:
         tmp.unlink(missing_ok=True)
@@ -362,7 +363,14 @@ def stage_supersu(out: Path) -> None:
     inv = out / "system/etc/super-switcher"
     inv.mkdir(parents=True)
 
-    z = ensure_download(SUPERSU_URL, DL / SUPERSU_ZIP_NAME, SUPERSU_MD5)
+    if not SUPERSU_ZIP.is_file():
+        raise SystemExit(f"missing vendored SuperSU: {SUPERSU_ZIP}")
+    got = md5_file(SUPERSU_ZIP)
+    if got != SUPERSU_MD5:
+        raise SystemExit(f"md5 mismatch for {SUPERSU_ZIP.name}: {got} != {SUPERSU_MD5}")
+    z = SUPERSU_ZIP
+    print(f"using vendored {SUPERSU_ZIP.relative_to(ROOT)}")
+
     with tempfile.TemporaryDirectory(prefix="supersu-") as td:
         td_path = Path(td)
         unzip_to(z, td_path / "u")

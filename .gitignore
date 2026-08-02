@@ -1,14 +1,16 @@
 # Build / fetch caches
 /out/
-/third_party/
+
+# third_party: vendored trees (e.g. supersu/) are committed;
+# ignore NDK / Mesa checkout / download cache only.
+/third_party/ndk/
+/third_party/mesa/
+/third_party/downloads/
 
 # Runtime Android /data volumes (never commit)
 /data/
 /compose/data/
 /compose/data-*/
-
-# Extra download cache (also under third_party/)
-/third_party/downloads/
 
 # Python
 __pycache__/

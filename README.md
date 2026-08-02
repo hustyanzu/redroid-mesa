@@ -34,7 +34,8 @@ Stock topjohnwu Magisk dropped that flag and shows N/A on redroid.
 
 MindTheGapps is [MindTheGapps 13.0.0 x86_64](https://github.com/MindTheGapps/13.0.0-x86_64/releases/tag/MindTheGapps-13.0.0-x86_64-20231025_201203).
 
-SuperSU is [SuperSU 2.82 SR5](https://download.chainfire.eu/1220/SuperSU/)
+SuperSU is Chainfire [2.82 SR5](https://download.chainfire.eu/1220/SuperSU/),
+vendored at `third_party/supersu/`.
 
 `./scripts/build.sh --all` builds every variant above (Mesa once).
 
