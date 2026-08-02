@@ -3,8 +3,13 @@
 Newer **Android Mesa (`iris`)** for **Redroid A13** host-GPU on **Intel iGPU**
 (e.g. Arrow Lake `8086:7d67`) where stock Redroid’s Mesa is too old.
 
-CI builds host `mesa_clc`, then cross-compiles **Android x86_64 Mesa with
-`gallium-drivers=iris` only**. AMD / other vendors are **not** in the image.
+CI builds host `mesa_clc`, then cross-compiles **Android Mesa with
+`gallium-drivers=iris` only** for **both `x86_64` and `x86`**, staged into
+`/vendor/lib64` and `/vendor/lib`. AMD / other vendors are **not** in the image.
+
+On non-`_64only` Redroid, host GPU (`egl=mesa`) loads Mesa for every ABI. Shipping
+only a new 64-bit iris while leaving stock 32-bit Mesa in `/vendor/lib` is enough
+to hang SurfaceFlinger / scrcpy on Arrow Lake — both ABIs must match.
 
 ## Variants
 

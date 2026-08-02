@@ -127,20 +127,40 @@ build_mesa_clc() {
   command -v vtn_bindgen2 >/dev/null
 }
 
-build_android_mesa() {
+# Build Android Mesa for one ABI.
+#   abi=x86_64 → out/android-x86_64 (clang triple x86_64-linux-android)
+#   abi=x86    → out/android-x86    (clang triple i686-linux-android)
+build_android_mesa_abi() {
+  local abi="${1:?abi}"
   local mesa="$ROOT/third_party/mesa"
   local ndk="$ROOT/third_party/ndk"
   local tc="$ndk/toolchains/llvm/prebuilt/linux-x86_64"
-  local cross="$ROOT/out/android-x86_64.cross"
-  local build="$ROOT/out/build-android-x86_64"
-  local prefix="$ROOT/out/android-x86_64"
+  local triple cpu_family cpu
+  case "$abi" in
+    x86_64)
+      triple="x86_64-linux-android${ANDROID_API}"
+      cpu_family=x86_64
+      cpu=x86_64
+      ;;
+    x86)
+      triple="i686-linux-android${ANDROID_API}"
+      cpu_family=x86
+      cpu=i686
+      ;;
+    *) die "unsupported Mesa abi: $abi" ;;
+  esac
+
+  local cross="$ROOT/out/android-${abi}.cross"
+  local build="$ROOT/out/build-android-${abi}"
+  local prefix="$ROOT/out/android-${abi}"
   export PATH="${ROOT}/out/mesa-compiler/bin:${PATH:-}"
+  test -x "$tc/bin/${triple}-clang" || die "missing NDK clang $triple"
 
   cat > "$cross" <<EOF
 [binaries]
 ar = '$tc/bin/llvm-ar'
-c = '$tc/bin/x86_64-linux-android${ANDROID_API}-clang'
-cpp = ['$tc/bin/x86_64-linux-android${ANDROID_API}-clang++', '-fno-exceptions', '-fno-unwind-tables', '-fno-asynchronous-unwind-tables', '-static-libstdc++']
+c = '$tc/bin/${triple}-clang'
+cpp = ['$tc/bin/${triple}-clang++', '-fno-exceptions', '-fno-unwind-tables', '-fno-asynchronous-unwind-tables', '-static-libstdc++']
 c_ld = 'lld'
 cpp_ld = 'lld'
 strip = '$tc/bin/llvm-strip'
@@ -148,8 +168,8 @@ pkg-config = 'false'
 
 [host_machine]
 system = 'android'
-cpu_family = 'x86_64'
-cpu = 'x86_64'
+cpu_family = '${cpu_family}'
+cpu = '${cpu}'
 endian = 'little'
 
 [properties]
@@ -158,6 +178,7 @@ EOF
 
   rm -rf "$build" "$prefix"
   mkdir -p "$ROOT/out"
+  log "android mesa ($abi)"
   meson setup "$build" "$mesa" \
     --cross-file "$cross" \
     --prefix="$prefix" \
@@ -183,45 +204,55 @@ EOF
     -Dbuild-tests=false
   ninja -C "$build"
   DESTDIR= ninja -C "$build" install
-  # Drop meson/ninja trees; keep install prefix for stage_vendor.
-  rm -rf "$build" "$ROOT/out/build-compiler"
+  rm -rf "$build"
+  [[ -f "$prefix/lib/libgallium_dri.so" ]] || die "mesa $abi install missing libgallium_dri.so"
 }
 
-stage_vendor() {
-  local src="$ROOT/out/android-x86_64/lib"
-  local dst="$ROOT/out/vendor-mesa"
-  local baked_gbm="$ROOT/out/android-x86_64/lib/gbm"
+build_android_mesa() {
+  # Non-_64only redroid needs matching host-GPU Mesa in both lib64 and lib.
+  # Mismatched stock 32-bit Mesa under host egl=mesa hangs the iGPU / SF.
+  build_android_mesa_abi x86_64
+  build_android_mesa_abi x86
+  rm -rf "$ROOT/out/build-compiler"
+}
 
-  [[ -f "$src/libgallium_dri.so" ]] || die "missing Android Mesa build"
+# Install one ABI's Mesa into vendor/{lib64|lib}.
+stage_vendor_abi() {
+  local abi="${1:?}"
+  local vlib="${2:?}" # lib64 or lib
+  local gbm_path="${3:?}" # /vendor/lib64/gbm or /vendor/lib/gbm
+  local src="$ROOT/out/android-${abi}/lib"
+  local dst="$ROOT/out/vendor-mesa"
+  local baked_gbm="$src/gbm"
+
+  [[ -f "$src/libgallium_dri.so" ]] || die "missing Android Mesa build ($abi)"
   command -v patchelf >/dev/null || die "patchelf required"
 
-  rm -rf "$dst"
-  mkdir -p "$dst/vendor/lib64/egl" "$dst/vendor/lib64/dri" "$dst/vendor/lib64/gbm"
+  mkdir -p "$dst/vendor/${vlib}/egl" "$dst/vendor/${vlib}/dri" "$dst/vendor/${vlib}/gbm"
 
-  install -m 0755 "$src/libEGL.so"       "$dst/vendor/lib64/egl/libEGL_mesa.so"
-  install -m 0755 "$src/libGLESv1_CM.so" "$dst/vendor/lib64/egl/libGLESv1_CM_mesa.so"
-  install -m 0755 "$src/libGLESv2.so"    "$dst/vendor/lib64/egl/libGLESv2_mesa.so"
-  install -m 0755 "$src/libgallium_dri.so" "$dst/vendor/lib64/dri/libgallium_dri.so"
-  ln -sfn libgallium_dri.so "$dst/vendor/lib64/dri/iris_dri.so"
-  install -m 0755 "$src/libgallium_dri.so" "$dst/vendor/lib64/libgallium_dri.so"
-  install -m 0755 "$src/libdrm.so"   "$dst/vendor/lib64/libdrm.so"
-  install -m 0755 "$src/libexpat.so" "$dst/vendor/lib64/libexpat.so"
-  install -m 0755 "$src/libgbm_mesa.so" "$dst/vendor/lib64/libgbm.so.1"
-  patchelf --set-soname libgbm.so.1 "$dst/vendor/lib64/libgbm.so.1"
-  install -m 0755 "$src/gbm/dri_gbm.so" "$dst/vendor/lib64/gbm/dri_gbm.so"
+  install -m 0755 "$src/libEGL.so"       "$dst/vendor/${vlib}/egl/libEGL_mesa.so"
+  install -m 0755 "$src/libGLESv1_CM.so" "$dst/vendor/${vlib}/egl/libGLESv1_CM_mesa.so"
+  install -m 0755 "$src/libGLESv2.so"    "$dst/vendor/${vlib}/egl/libGLESv2_mesa.so"
+  install -m 0755 "$src/libgallium_dri.so" "$dst/vendor/${vlib}/dri/libgallium_dri.so"
+  ln -sfn libgallium_dri.so "$dst/vendor/${vlib}/dri/iris_dri.so"
+  install -m 0755 "$src/libgallium_dri.so" "$dst/vendor/${vlib}/libgallium_dri.so"
+  install -m 0755 "$src/libdrm.so"   "$dst/vendor/${vlib}/libdrm.so"
+  install -m 0755 "$src/libexpat.so" "$dst/vendor/${vlib}/libexpat.so"
+  install -m 0755 "$src/libgbm_mesa.so" "$dst/vendor/${vlib}/libgbm.so.1"
+  patchelf --set-soname libgbm.so.1 "$dst/vendor/${vlib}/libgbm.so.1"
+  install -m 0755 "$src/gbm/dri_gbm.so" "$dst/vendor/${vlib}/gbm/dri_gbm.so"
 
-  python3 - "$dst/vendor/lib64/libgbm.so.1" "$baked_gbm" <<'PY'
+  python3 - "$dst/vendor/${vlib}/libgbm.so.1" "$baked_gbm" "$gbm_path" <<'PY'
 import sys
 from pathlib import Path
-path, baked = Path(sys.argv[1]), sys.argv[2].encode()
-new = b"/vendor/lib64/gbm"
+path, baked, new = Path(sys.argv[1]), sys.argv[2].encode(), sys.argv[3].encode()
 data = bytearray(path.read_bytes())
 
 def patch(blob, old, new):
     if old not in blob:
         return False
     if len(new) > len(old):
-        raise SystemExit("replacement too long")
+        raise SystemExit(f"replacement too long: {new!r} > {old!r}")
     blob[:] = blob.replace(old, new + b"\0" * (len(old) - len(new)))
     return True
 
@@ -237,11 +268,19 @@ if not patch(data, baked, new):
     if not patch(data, old, new):
         raise SystemExit(f"failed to patch {old!r}")
 path.write_bytes(data)
-print("patched GBM_BACKENDS_PATH -> /vendor/lib64/gbm")
+print(f"patched GBM_BACKENDS_PATH -> {new.decode()}")
 PY
 
-  grep -a -q '7d67' "$dst/vendor/lib64/dri/libgallium_dri.so" || die "0x7d67 missing"
-  echo "staged $dst (PCI 0x7d67 OK)"
+  grep -a -q '7d67' "$dst/vendor/${vlib}/dri/libgallium_dri.so" || die "0x7d67 missing in $vlib"
+  echo "staged vendor/${vlib} from android-${abi} (PCI 0x7d67 OK)"
+}
+
+stage_vendor() {
+  local dst="$ROOT/out/vendor-mesa"
+  rm -rf "$dst"
+  stage_vendor_abi x86_64 lib64 /vendor/lib64/gbm
+  stage_vendor_abi x86 lib /vendor/lib/gbm
+  echo "staged $dst (lib64+lib iris)"
 }
 
 docker_image() {
@@ -314,8 +353,9 @@ ALL_VARIANTS=(
 
 ensure_mesa() {
   if [[ "${SKIP_MESA_BUILD:-0}" == "1" ]]; then
-    log "reuse existing out/android-x86_64"
-    [[ -f "$ROOT/out/android-x86_64/lib/libgallium_dri.so" ]] || die "no Mesa build present"
+    log "reuse existing out/android-x86_64 + out/android-x86"
+    [[ -f "$ROOT/out/android-x86_64/lib/libgallium_dri.so" ]] || die "no Mesa x86_64 build present"
+    [[ -f "$ROOT/out/android-x86/lib/libgallium_dri.so" ]] || die "no Mesa x86 build present (needed for host GPU on non-_64only)"
     return
   fi
   # Mesa is shared — load any variant for MESA_TAG / ANDROID_API
@@ -324,7 +364,7 @@ ensure_mesa() {
   fetch_sources
   log "mesa_clc"
   build_mesa_clc
-  log "android mesa"
+  log "android mesa (x86_64 + x86)"
   build_android_mesa
   # Host CLC tools not needed after Android Mesa is installed.
   rm -rf "$ROOT/out/mesa-compiler" "$ROOT/out/build-compiler"
@@ -349,8 +389,9 @@ VARIANT_ID="${1:-a13}"
 load_variant "$VARIANT_ID"
 
 if [[ "${SKIP_MESA_BUILD:-0}" == "1" ]]; then
-  log "reuse existing out/android-x86_64"
-  [[ -f "$ROOT/out/android-x86_64/lib/libgallium_dri.so" ]] || die "no Mesa build present"
+  log "reuse existing out/android-x86_64 + out/android-x86"
+  [[ -f "$ROOT/out/android-x86_64/lib/libgallium_dri.so" ]] || die "no Mesa x86_64 build present"
+  [[ -f "$ROOT/out/android-x86/lib/libgallium_dri.so" ]] || die "no Mesa x86 build present (needed for host GPU on non-_64only)"
 else
   ensure_mesa
 fi
