@@ -329,12 +329,22 @@ def stage_flagsecure(out: Path, *, base_image: str) -> None:
             jar_out = sd_path / "services.jar"
             extract_services_jar(base_image, jar_in)
             patch_jar(base_image, jar_in, jar_out, fsp_root)
-            resolve_dex2oat(jar_out, oat)
+            skip_oat = os.environ.get("FLAGSECURE_SKIP_DEX2OAT", "").strip().lower() in (
+                "1",
+                "true",
+                "yes",
+            )
+            if skip_oat:
+                print("flagsecure: skipping dex2oat (stale oat stripped in image build)")
+                (out / ".no_oat").write_text("1\n")
+            else:
+                resolve_dex2oat(jar_out, oat)
             shutil.copy2(jar_out, fw / "services.jar")
 
+    oat_note = "jar_only" if (out / ".no_oat").is_file() else f"oat_isa={OAT_ISA}"
     (marker_dir / "flagsecure").write_text(
         f"isSecureLocked=RET_FALSE\nsource=FlagSecurePatcher-{FLAGSECURE_VERSION}\n"
-        f"oat_isa={OAT_ISA}\n"
+        f"{oat_note}\n"
     )
     print(f"staged flagsecure → {out}")
 

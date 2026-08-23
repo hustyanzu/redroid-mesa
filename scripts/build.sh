@@ -295,6 +295,15 @@ docker_image() {
   fi
   cp "$ROOT/docker/Dockerfile" "$ctx/Dockerfile"
   cp "$ROOT/docker/.dockerignore" "$ctx/.dockerignore"
+  if [[ -f "$ROOT/out/extras/flagsecure/.no_oat" ]]; then
+    cat >>"$ctx/Dockerfile" <<'EOF'
+
+# flagsecure jar-only (CI): drop base-image oat so ART recompiles from patched jar.
+RUN rm -f /system/framework/oat/x86_64/services.odex \
+          /system/framework/oat/x86_64/services.vdex \
+          /system/framework/oat/x86_64/services.art
+EOF
+  fi
 
   if [[ -n "$features" ]]; then
     log "stage extras ($features)"

@@ -44,8 +44,10 @@ vendored at `vendor/supersu/`.
 secure windows). Only that method is patched — not `isScreenCaptureAllowed` /
 `getScreenCaptureDisabled`.
 
-Build needs a booted redroid for `dex2oat` (auto-detects `redroid-mesa-1`, or set
-`FLAGSECURE_DEX_CONTAINER` / `FLAGSECURE_ADB`). Tooling comes from
+Local builds pre-compile oat via `dex2oat` on a booted redroid (auto-detects
+`redroid-mesa-1`, or set `FLAGSECURE_DEX_CONTAINER` / `FLAGSECURE_ADB`). CI sets
+`FLAGSECURE_SKIP_DEX2OAT=1` (podman cannot nest redroid) and strips stale oat at
+image build; first boot may take slightly longer. Tooling:
 [FlagSecurePatcher](https://github.com/j-hc/FlagSecurePatcher) r17.
 
 ### VpnService / `/dev/tun`
