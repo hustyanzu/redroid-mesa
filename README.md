@@ -20,13 +20,14 @@ Base: Redroid **`13.0.0`**.
 
 | Tag | Contents |
 |---|---|
-| `a13` / `latest` | Mesa only (pure) |
+| `a13` | Mesa only (pure) |
 | `a13-houdini` | + houdini |
-| `a13-supersu` | + houdini + **SuperSU** (default Root OFF) |
-| `a13-mindthegapps` | + houdini + MindTheGapps |
-| `a13-mindthegapps-supersu` | + houdini + MindTheGapps + SuperSU + FLAG_SECURE ignore |
+| `a13-su` | + houdini + **SuperSU** (default Root OFF) |
+| `a13-gapps` | + houdini + MindTheGapps |
+| `a13-gapps-su` | + houdini + MindTheGapps + SuperSU |
+| `a13-gapps-su-flagsecure` / `latest` | + houdini + MindTheGapps + SuperSU + FLAG_SECURE ignore |
 | `a13-magisk` | + houdini + Magisk (ayasa520 / redroid-script) |
-| `a13-mindthegapps-magisk` | + houdini + MindTheGapps + Magisk |
+| `a13-gapps-magisk` | + houdini + MindTheGapps + Magisk |
 
 Magisk here is [ayasa520’s v30.7 fork](https://github.com/ayasa520/Magisk) (`com.topjohnwu.magisk`),
 same `--setup-sbin` init as [redroid-script](https://github.com/ayasa520/redroid-script).
@@ -41,7 +42,7 @@ FLAG_SECURE patch artifacts are vendored at `vendor/flagsecure/` (see above).
 
 ### FLAG_SECURE ignore (`flagsecure`)
 
-`a13-mindthegapps-supersu` patches `/system/framework/services.jar` so
+`a13-gapps-su-flagsecure` patches `/system/framework/services.jar` so
 `isSecureLocked()` always returns false (scrcpy / screencap no longer black on
 secure windows). Only that method is patched — not `isScreenCaptureAllowed` /
 `getScreenCaptureDisabled`.
@@ -186,9 +187,9 @@ sudo apt-get install -y --no-install-recommends \
 ```bash
 chmod +x scripts/*.sh scripts/super-switcher/*.sh
 ./scripts/build.sh                  # pure a13
-./scripts/build.sh a13-supersu
-./scripts/build.sh a13-mindthegapps-supersu
+./scripts/build.sh a13-su
+./scripts/build.sh a13-gapps-su-flagsecure
 ./scripts/build.sh --mesa-only     # compile Mesa only
 ./scripts/build.sh --all           # all variants (Mesa once)
-SKIP_MESA_BUILD=1 ./scripts/build.sh a13-supersu
+SKIP_MESA_BUILD=1 ./scripts/build.sh a13-gapps-su
 ```

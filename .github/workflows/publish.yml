@@ -93,11 +93,12 @@ jobs:
           variants=(
             a13
             a13-houdini
-            a13-supersu
-            a13-mindthegapps
-            a13-mindthegapps-supersu
+            a13-su
+            a13-gapps
+            a13-gapps-su
+            a13-gapps-su-flagsecure
             a13-magisk
-            a13-mindthegapps-magisk
+            a13-gapps-magisk
           )
 
           for v in "${variants[@]}"; do
@@ -111,7 +112,7 @@ jobs:
             docker push "${remote}:${local_tag}"
             docker push "${remote}:${v}"
 
-            if [ "$v" = "a13" ]; then
+            if [ "$v" = "a13-gapps-su-flagsecure" ]; then
               docker tag "${NAME}:${local_tag}" "${remote}:latest"
               docker push "${remote}:latest"
               if [ "$EVENT" = "push" ]; then

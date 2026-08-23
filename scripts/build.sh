@@ -2,7 +2,7 @@
 # Build redroid-mesa image: fetch → Mesa → stage vendor → docker image.
 # Usage:
 #   ./scripts/build.sh                 # pure a13
-#   ./scripts/build.sh a13-supersu
+#   ./scripts/build.sh a13-su
 #   ./scripts/build.sh --mesa-only     # fetch + compile Mesa (no docker image)
 #   ./scripts/build.sh --all           # all variants (Mesa once)
 #   SKIP_MESA_BUILD=1 ./scripts/build.sh --all
@@ -335,7 +335,7 @@ EOF
   fi
 
   local tags=(-t "${IMAGE_NAME}:${IMAGE_TAG}" -t "${IMAGE_NAME}:${VARIANT_ID}")
-  if [[ "$VARIANT_ID" == "a13" ]]; then
+  if [[ "$VARIANT_ID" == "a13-gapps-su-flagsecure" ]]; then
     tags+=(-t "${IMAGE_NAME}:latest")
   fi
 
@@ -371,11 +371,12 @@ build_one() {
 ALL_VARIANTS=(
   a13
   a13-houdini
-  a13-supersu
-  a13-mindthegapps
-  a13-mindthegapps-supersu
+  a13-su
+  a13-gapps
+  a13-gapps-su
+  a13-gapps-su-flagsecure
   a13-magisk
-  a13-mindthegapps-magisk
+  a13-gapps-magisk
 )
 
 ensure_mesa() {
