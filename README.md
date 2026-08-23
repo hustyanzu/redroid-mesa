@@ -24,7 +24,7 @@ Base: Redroid **`13.0.0`**.
 | `a13-houdini` | + houdini |
 | `a13-supersu` | + houdini + **SuperSU** (default Root OFF) |
 | `a13-mindthegapps` | + houdini + MindTheGapps |
-| `a13-mindthegapps-supersu` | + houdini + MindTheGapps + SuperSU |
+| `a13-mindthegapps-supersu` | + houdini + MindTheGapps + SuperSU + FLAG_SECURE ignore |
 | `a13-magisk` | + houdini + Magisk (ayasa520 / redroid-script) |
 | `a13-mindthegapps-magisk` | + houdini + MindTheGapps + Magisk |
 
@@ -36,6 +36,23 @@ MindTheGapps is [MindTheGapps 13.0.0 x86_64](https://github.com/MindTheGapps/13.
 
 SuperSU is Chainfire [2.82 SR5](https://download.chainfire.eu/1220/SuperSU/),
 vendored at `vendor/supersu/`.
+
+### FLAG_SECURE ignore (`flagsecure`)
+
+`a13-mindthegapps-supersu` patches `/system/framework/services.jar` so
+`isSecureLocked()` always returns false (scrcpy / screencap no longer black on
+secure windows). Only that method is patched — not `isScreenCaptureAllowed` /
+`getScreenCaptureDisabled`.
+
+Build needs a booted redroid for `dex2oat` (auto-detects `redroid-mesa-1`, or set
+`FLAGSECURE_DEX_CONTAINER` / `FLAGSECURE_ADB`). Tooling comes from
+[FlagSecurePatcher](https://github.com/j-hc/FlagSecurePatcher) r17.
+
+### VpnService / `/dev/tun`
+
+All images ship `system/etc/init/tun-dev.rc`, which creates `/dev/tun` on boot.
+Without it, apps using `VpnService` (e.g. UU) fail with `Cannot allocate TUN`.
+The tunnel lives in the container network namespace — it does not change host routing.
 
 `./scripts/build.sh --all` builds every variant above (Mesa once).
 

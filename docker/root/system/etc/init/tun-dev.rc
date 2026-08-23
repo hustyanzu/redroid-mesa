@@ -1,0 +1,4 @@
+# Android VpnService opens /dev/tun (not only /dev/net/tun). Redroid /dev is tmpfs
+# and often lacks /dev/tun, so VpnService.establish() fails with EINVAL.
+on early-init
+    exec -- /system/bin/sh -c "if [ ! -c /dev/tun ]; then mknod /dev/tun c 10 200 && chmod 0666 /dev/tun; fi"

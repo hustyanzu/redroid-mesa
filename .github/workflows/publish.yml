@@ -98,6 +98,26 @@ jobs:
             a13-mindthegapps-magisk
           )
 
+          # flagsecure needs dex2oat on a booted Android (services.jar oat).
+          docker rm -f redroid-dex2oat 2>/dev/null || true
+          docker run -d --privileged --name redroid-dex2oat \
+            -p 15555:5555 \
+            docker.io/redroid/redroid:13.0.0-latest \
+            androidboot.redroid_width=720 \
+            androidboot.redroid_height=1280 \
+            androidboot.redroid_dpi=320 \
+            androidboot.use_memfd=1
+          for i in $(seq 1 90); do
+            adb connect 127.0.0.1:15555 >/dev/null 2>&1 || true
+            if adb -s 127.0.0.1:15555 shell getprop sys.boot_completed 2>/dev/null | grep -q 1; then
+              echo "dex2oat helper ready after ${i}s"
+              break
+            fi
+            sleep 2
+          done
+          adb -s 127.0.0.1:15555 wait-for-device
+          export FLAGSECURE_ADB=127.0.0.1:15555
+
           for v in "${variants[@]}"; do
             echo "==== variant $v ===="
             df -h
@@ -132,4 +152,5 @@ jobs:
             df -h
           done
 
+          docker rm -f redroid-dex2oat 2>/dev/null || true
           echo "Pushed ${remote} variants: ${variants[*]} (+ latest)"

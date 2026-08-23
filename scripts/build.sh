@@ -290,13 +290,33 @@ docker_image() {
   rm -rf "$ctx"
   mkdir -p "$ctx/root"
   cp -a "$ROOT/out/vendor-mesa/vendor" "$ctx/root/vendor"
+  if [[ -d "$ROOT/docker/root" ]]; then
+    cp -a "$ROOT/docker/root"/. "$ctx/root/"
+  fi
   cp "$ROOT/docker/Dockerfile" "$ctx/Dockerfile"
   cp "$ROOT/docker/.dockerignore" "$ctx/.dockerignore"
 
   if [[ -n "$features" ]]; then
     log "stage extras ($features)"
-    python3 "$ROOT/scripts/stage_extras.py" --features "$features"
+    # flagsecure is staged by its own script (needs BASE_IMAGE + dex2oat host).
+    local extras_csv=""
     IFS=',' read -r -a feat_arr <<< "$features"
+    for f in "${feat_arr[@]}"; do
+      f="$(echo "$f" | tr -d '[:space:]')"
+      [[ -n "$f" ]] || continue
+      if [[ "$f" == "flagsecure" ]]; then
+        python3 "$ROOT/scripts/stage_flagsecure.py" --base-image "${BASE_IMAGE}"
+      else
+        if [[ -n "$extras_csv" ]]; then
+          extras_csv+=",${f}"
+        else
+          extras_csv="${f}"
+        fi
+      fi
+    done
+    if [[ -n "$extras_csv" ]]; then
+      python3 "$ROOT/scripts/stage_extras.py" --features "$extras_csv"
+    fi
     for f in "${feat_arr[@]}"; do
       f="$(echo "$f" | tr -d '[:space:]')"
       [[ -n "$f" ]] || continue
