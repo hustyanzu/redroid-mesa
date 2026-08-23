@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 """Patch services.jar to ignore FLAG_SECURE (isSecureLocked → false).
 
-Uses FlagSecurePatcher (paccer) inside the base image via Android bootstrap
-linker, then dex2oat for x86_64 oat files.
+CI / offline: copies pre-built overlay from vendor/flagsecure/ (no docker run).
+
+Live rebuild (FLAGSECURE_REBUILD=1): FlagSecurePatcher paccer inside base image,
+then dex2oat on a booted redroid (FLAGSECURE_ADB / FLAGSECURE_DEX_CONTAINER).
 
 Only isSecureLocked is patched. Do NOT patch isScreenCaptureAllowed /
 getScreenCaptureDisabled — those break screencap (returns empty frames).
-
-dex2oat needs a booted Android (adb) or `docker exec` into a running redroid
-container. Set FLAGSECURE_ADB (default 127.0.0.1:5555) or
-FLAGSECURE_DEX_CONTAINER (e.g. redroid-mesa-1).
 """
 from __future__ import annotations
 
@@ -24,6 +22,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DL = ROOT / "third_party" / "downloads"
 EXTRAS = ROOT / "out" / "extras"
+VENDOR = ROOT / "vendor" / "flagsecure"
 
 FLAGSECURE_VERSION = "r17"
 FLAGSECURE_URL = (
@@ -300,9 +299,90 @@ def resolve_dex2oat(jar: Path, oat_dir: Path) -> None:
     )
 
 
+def load_vendor_manifest() -> dict[str, str]:
+    mf = VENDOR / "manifest.env"
+    if not mf.is_file():
+        return {}
+    data: dict[str, str] = {}
+    for line in mf.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        key, _, val = line.partition("=")
+        data[key.strip()] = val.strip()
+    return data
+
+
+def vendor_matches(base_image: str) -> bool:
+    m = load_vendor_manifest()
+    if not m:
+        return False
+    jar = VENDOR / "system" / "framework" / "services.jar"
+    if not jar.is_file():
+        return False
+    if m.get("BASE_IMAGE") != base_image:
+        return False
+    if m.get("FLAGSECURE_VERSION") != FLAGSECURE_VERSION:
+        return False
+    expect = m.get("SERVICES_JAR_MD5", "")
+    if expect and md5_file(jar) != expect:
+        raise SystemExit(f"vendor flagsecure jar md5 mismatch (expected {expect})")
+    return True
+
+
+def merge_tree(src: Path, dst: Path) -> None:
+    for root, dirs, files in os.walk(src):
+        rel = Path(root).relative_to(src)
+        target_dir = dst / rel
+        target_dir.mkdir(parents=True, exist_ok=True)
+        for name in files:
+            s = Path(root) / name
+            d = target_dir / name
+            shutil.copy2(s, d)
+
+
+def stage_from_vendor(out: Path, *, jar_only: bool) -> None:
+    src = VENDOR / "system"
+    if not src.is_dir():
+        raise SystemExit(f"missing {src}")
+    merge_tree(src, out / "system")
+    if jar_only:
+        oat = out / "system" / "framework" / "oat"
+        if oat.exists():
+            shutil.rmtree(oat)
+        (out / ".no_oat").write_text("1\n")
+    print(f"staged flagsecure from vendor → {out}" + (" (jar only)" if jar_only else ""))
+
+
 def stage_flagsecure(out: Path, *, base_image: str) -> None:
     if out.exists():
         shutil.rmtree(out)
+    out.mkdir(parents=True)
+
+    skip_oat = os.environ.get("FLAGSECURE_SKIP_DEX2OAT", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    rebuild = os.environ.get("FLAGSECURE_REBUILD", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
+    if skip_oat:
+        if not vendor_matches(base_image):
+            raise SystemExit(
+                "flagsecure: CI needs vendor/flagsecure for "
+                f"{base_image} (FLAGSECURE_VERSION={FLAGSECURE_VERSION})"
+            )
+        stage_from_vendor(out, jar_only=True)
+        return
+
+    if not rebuild and vendor_matches(base_image):
+        stage_from_vendor(out, jar_only=False)
+        return
+
     fw = out / "system" / "framework"
     oat = fw / "oat" / OAT_ISA
     fw.mkdir(parents=True)
@@ -329,24 +409,15 @@ def stage_flagsecure(out: Path, *, base_image: str) -> None:
             jar_out = sd_path / "services.jar"
             extract_services_jar(base_image, jar_in)
             patch_jar(base_image, jar_in, jar_out, fsp_root)
-            skip_oat = os.environ.get("FLAGSECURE_SKIP_DEX2OAT", "").strip().lower() in (
-                "1",
-                "true",
-                "yes",
-            )
-            if skip_oat:
-                print("flagsecure: skipping dex2oat (stale oat stripped in image build)")
-                (out / ".no_oat").write_text("1\n")
-            else:
-                resolve_dex2oat(jar_out, oat)
+            resolve_dex2oat(jar_out, oat)
             shutil.copy2(jar_out, fw / "services.jar")
 
-    oat_note = "jar_only" if (out / ".no_oat").is_file() else f"oat_isa={OAT_ISA}"
+    oat_note = f"oat_isa={OAT_ISA}"
     (marker_dir / "flagsecure").write_text(
         f"isSecureLocked=RET_FALSE\nsource=FlagSecurePatcher-{FLAGSECURE_VERSION}\n"
         f"{oat_note}\n"
     )
-    print(f"staged flagsecure → {out}")
+    print(f"staged flagsecure (live rebuild) → {out}")
 
 
 def main() -> int:

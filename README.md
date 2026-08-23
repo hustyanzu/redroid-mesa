@@ -37,6 +37,8 @@ MindTheGapps is [MindTheGapps 13.0.0 x86_64](https://github.com/MindTheGapps/13.
 SuperSU is Chainfire [2.82 SR5](https://download.chainfire.eu/1220/SuperSU/),
 vendored at `vendor/supersu/`.
 
+FLAG_SECURE patch artifacts are vendored at `vendor/flagsecure/` (see above).
+
 ### FLAG_SECURE ignore (`flagsecure`)
 
 `a13-mindthegapps-supersu` patches `/system/framework/services.jar` so
@@ -44,11 +46,12 @@ vendored at `vendor/supersu/`.
 secure windows). Only that method is patched — not `isScreenCaptureAllowed` /
 `getScreenCaptureDisabled`.
 
-Local builds pre-compile oat via `dex2oat` on a booted redroid (auto-detects
-`redroid-mesa-1`, or set `FLAGSECURE_DEX_CONTAINER` / `FLAGSECURE_ADB`). CI sets
-`FLAGSECURE_SKIP_DEX2OAT=1` (podman cannot nest redroid) and strips stale oat at
-image build; first boot may take slightly longer. Tooling:
-[FlagSecurePatcher](https://github.com/j-hc/FlagSecurePatcher) r17.
+Local builds use pre-built `vendor/flagsecure/` (jar + oat). To regenerate after
+base-image or patcher updates: `FLAGSECURE_REBUILD=1 ./scripts/build.sh …`, then
+refresh `vendor/flagsecure/` from `out/extras/flagsecure/`.
+
+CI sets `FLAGSECURE_SKIP_DEX2OAT=1` and copies jar-only from vendor (podman cannot
+`docker run` nested containers); stale oat is stripped at image build.
 
 ### VpnService / `/dev/tun`
 

@@ -1,0 +1,3 @@
+isSecureLocked=RET_FALSE
+source=FlagSecurePatcher-r17
+oat_isa=x86_64
