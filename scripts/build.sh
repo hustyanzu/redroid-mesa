@@ -334,6 +334,11 @@ EOF
     done
   fi
 
+  # Android init rejects group-writable *.rc ("Skipping insecure file"); CI umask can make cp -a 664.
+  if [[ -d "$ctx/root/system/etc/init" ]]; then
+    find "$ctx/root/system/etc/init" -maxdepth 1 -name '*.rc' -exec chmod 0644 {} +
+  fi
+
   local tags=(-t "${IMAGE_NAME}:${IMAGE_TAG}" -t "${IMAGE_NAME}:${VARIANT_ID}")
   if [[ "$VARIANT_ID" == "a13-gapps-su-flagsecure" ]]; then
     tags+=(-t "${IMAGE_NAME}:latest")
